@@ -322,15 +322,15 @@
 
     <div id="adminSection" class="card hidden">
       <h2>Admin</h2>
-      <div class="muted">The database lives in hidden backend sheets inside this spreadsheet: Cases, CaseDocuments, Districts, Campuses, Evaluators, and DistrictCalendars.</div>
+      <div class="muted">The database lives in visible protected sheets inside this spreadsheet: Cases, CaseDocuments, Districts, Campuses, Evaluators, and DistrictCalendars. Direct sheet edits are limited to admin Google accounts.</div>
       <div class="grid">
         <div>
           <label for="adminCode">Admin Access Code</label>
           <input id="adminCode" type="password">
         </div>
         <div class="row">
-          <button class="secondary" onclick="runAdminAction('show')">Show Backend Sheets</button>
-          <button class="secondary" onclick="runAdminAction('hide')">Hide Backend Sheets</button>
+          <button class="secondary" onclick="runAdminAction('show')">Show All Sheets</button>
+          <button class="secondary" onclick="runAdminAction('protect')">Reapply Protection</button>
         </div>
         <div class="row">
           <button class="secondary" onclick="runOpenAdminSheet('districts')">Open Districts</button>
@@ -630,7 +630,7 @@
 
       function runAdminAction(action) {
         const adminCode = document.getElementById('adminCode').value;
-        const call = action === 'show' ? 'showBackendSheets' : 'hideBackendSheets';
+        const call = action === 'show' ? 'showAllSheets' : 'applyAdminSheetProtection';
         google.script.run
           .withSuccessHandler(() => setStatus('Admin action completed.', 'success'))
           .withFailureHandler(handleError)

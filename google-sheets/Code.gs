@@ -1,4 +1,5 @@
 const ADMIN_ACCESS_CODE = 'CHANGE_ME_BEFORE_PRODUCTION';
+const ADMIN_EDITOR_EMAILS = [];
 
 const SHEETS = {
   cases: 'Cases',
@@ -89,6 +90,7 @@ function onOpen() {
     .addItem('Open Evaluators (Admin)', 'openEvaluatorsSheet')
     .addItem('Open Calendars (Admin)', 'openCalendarsSheet')
     .addItem('Sync Calendar Grid', 'syncDistrictCalendarGrid')
+    .addItem('Reapply Admin Sheet Protection', 'reapplyAdminSheetProtection')
     .addToUi();
 }
 
@@ -96,10 +98,11 @@ function installSpedStatusReports() {
   ensureWorkbookScaffold_();
   seedReferenceData_();
   syncDistrictCalendarSheet_();
-  hideBackendSheets_();
+  showAllSheets_();
+  applyAllSheetProtections_();
   refreshDashboard();
   SpreadsheetApp.getUi().alert(
-    'SPED Status Reports is ready. Update the sample district, campus, evaluator, calendar, and admin settings before production use.'
+    'SPED Status Reports is ready. Sheets are visible, and direct edits are restricted to configured admin accounts. Update the sample district, campus, evaluator, calendar, and admin settings before production use.'
   );
 }
 
@@ -108,6 +111,13 @@ function syncDistrictCalendarGrid() {
   syncDistrictCalendarSheet_();
   SpreadsheetApp.getUi().alert(
     'District calendar grid synced. Weekends default to No, weekdays default to Yes, and existing Yes/No edits were preserved where possible.'
+  );
+}
+
+function reapplyAdminSheetProtection() {
+  applyAllSheetProtections_();
+  SpreadsheetApp.getUi().alert(
+    'Admin sheet protection was reapplied. Direct sheet edits are limited to the configured admin accounts.'
   );
 }
 
@@ -330,24 +340,19 @@ function openCalendarsSheet(adminCode) {
   openAdminSheet_(SHEETS.calendars, adminCode);
 }
 
-function showBackendSheets(adminCode) {
+function showAllSheets(adminCode) {
   if (!validateAdminCode(adminCode)) {
     throw new Error('Admin access denied.');
   }
-  Object.values(SHEETS).forEach((name) => {
-    const sheet = SpreadsheetApp.getActive().getSheetByName(name);
-    if (sheet) {
-      sheet.showSheet();
-    }
-  });
+  showAllSheets_();
   return true;
 }
 
-function hideBackendSheets(adminCode) {
+function applyAdminSheetProtection(adminCode) {
   if (!validateAdminCode(adminCode)) {
     throw new Error('Admin access denied.');
   }
-  hideBackendSheets_();
+  applyAllSheetProtections_();
   return true;
 }
 
@@ -421,6 +426,8 @@ function ensureWorkbookScaffold_() {
   ensureSheet_(SHEETS.calendars, CALENDAR_BASE_HEADERS);
   ensureSheet_(SHEETS.dashboard, ['SPED Status Reports Dashboard']);
   syncDistrictCalendarSheet_();
+  showAllSheets_();
+  applyAllSheetProtections_();
 }
 
 function ensureSheet_(sheetName, headers) {
@@ -441,22 +448,75 @@ function ensureSheet_(sheetName, headers) {
     }
   }
 
-  if (sheetName !== SHEETS.dashboard) {
-    applyProtection_(sheet);
-  }
-
   return sheet;
 }
 
 function applyProtection_(sheet) {
+  const allowedEditors = getAdminEditorEmails_();
   const protections = sheet.getProtections(SpreadsheetApp.ProtectionType.SHEET);
-  if (protections.length) {
-    return protections[0];
+  let protection = protections.length ? protections[0] : null;
+
+  if (!protection) {
+    protection = sheet.protect();
   }
 
-  const protection = sheet.protect();
   protection.setDescription(`SPED backend protection for ${sheet.getName()}`);
+  protection.setWarningOnly(false);
+
+  const editors = protection.getEditors();
+  if (editors.length) {
+    protection.removeEditors(editors);
+  }
+
+  if (allowedEditors.length) {
+    protection.addEditors(allowedEditors);
+  }
+
+  if (protection.canDomainEdit()) {
+    protection.setDomainEdit(false);
+  }
+
   return protection;
+}
+
+function applyAllSheetProtections_() {
+  Object.values(SHEETS).forEach((name) => {
+    const sheet = SpreadsheetApp.getActive().getSheetByName(name);
+    if (sheet) {
+      applyProtection_(sheet);
+    }
+  });
+}
+
+function showAllSheets_() {
+  Object.values(SHEETS).forEach((name) => {
+    const sheet = SpreadsheetApp.getActive().getSheetByName(name);
+    if (sheet) {
+      sheet.showSheet();
+    }
+  });
+}
+
+function getAdminEditorEmails_() {
+  const emails = [];
+  const effectiveUser = Session.getEffectiveUser().getEmail();
+  const activeUser = Session.getActiveUser().getEmail();
+
+  if (effectiveUser) {
+    emails.push(effectiveUser);
+  }
+
+  if (activeUser) {
+    emails.push(activeUser);
+  }
+
+  ADMIN_EDITOR_EMAILS.forEach((email) => {
+    if (email) {
+      emails.push(String(email).trim());
+    }
+  });
+
+  return [...new Set(emails.filter(Boolean))];
 }
 
 function syncDistrictCalendarSheet_() {
@@ -624,24 +684,6 @@ function openAdminSheet_(sheetName, adminCode) {
   const sheet = SpreadsheetApp.getActive().getSheetByName(sheetName);
   sheet.showSheet();
   SpreadsheetApp.getActive().setActiveSheet(sheet);
-}
-
-function hideBackendSheets_() {
-  const dashboard = SpreadsheetApp.getActive().getSheetByName(SHEETS.dashboard);
-  Object.entries(SHEETS).forEach(([, name]) => {
-    const sheet = SpreadsheetApp.getActive().getSheetByName(name);
-    if (!sheet) {
-      return;
-    }
-    if (name === SHEETS.dashboard) {
-      sheet.showSheet();
-    } else {
-      sheet.hideSheet();
-    }
-  });
-  if (dashboard) {
-    SpreadsheetApp.getActive().setActiveSheet(dashboard);
-  }
 }
 
 function buildStoredCaseRow_(caseId, payload, timeline, createdAt, updatedAt) {

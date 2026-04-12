@@ -20,9 +20,10 @@ This folder contains a Google Sheets adaptation of the SPED Status Reports workf
    - `Sidebar.html`
    - `appsscript.json`
 4. Update the `ADMIN_ACCESS_CODE` constant in `Code.gs`.
-5. Run `installSpedStatusReports()` once from the Apps Script editor.
-6. Refresh the spreadsheet.
-7. Use the `SPED Status Reports` custom menu to open the app.
+5. Add admin Google account emails to `ADMIN_EDITOR_EMAILS` in `Code.gs`.
+6. Run `installSpedStatusReports()` once from the Apps Script editor.
+7. Refresh the spreadsheet.
+8. Use the `SPED Status Reports` custom menu to open the app.
 
 ## How To Update Calendars And Dropdown Lists
 Use the `SPED Status Reports` menu in the spreadsheet.
@@ -85,7 +86,7 @@ After making admin changes:
 2. Reopen the sidebar if you want the latest dropdown values to reload immediately.
 
 ## Where The Database Lives
-The data is stored inside this same Google Sheet on hidden backend tabs:
+The data is stored inside this same Google Sheet on visible protected tabs:
 - `Cases`
 - `CaseDocuments`
 - `Districts`
@@ -93,11 +94,14 @@ The data is stored inside this same Google Sheet on hidden backend tabs:
 - `Evaluators`
 - `DistrictCalendars`
 
-To view them:
+They are visible to everyone who can open the spreadsheet.
+Direct sheet edits are limited by Google Sheets protection to the admin accounts listed in `ADMIN_EDITOR_EMAILS` plus the installing/admin user.
+
+To manage the protections:
 1. Open the sidebar.
 2. Open the `Admin` section.
 3. Enter the admin code.
-4. Use `Show Backend Sheets`, or open a specific admin sheet from the menu.
+4. Use `Reapply Protection` if you changed admin accounts or copied the sheet.
 
 For milestone updates:
 1. Choose `Update Existing`.
@@ -108,7 +112,7 @@ For milestone updates:
 ## Behavior changes from Excel
 - The app opens from a custom Google Sheets menu instead of `Workbook_Open`.
 - Forms are rendered in a sidebar using HTML Service instead of VBA `UserForm`s.
-- Backend sheets are hidden and can be protected, but file sharing permissions remain the main security boundary.
+- Database sheets are visible, but direct edits are restricted with Google Sheets sheet protection.
 - `New Case -> Initial` now shows only intake fields; milestone dates and needed services are reserved for `Update Existing`.
 - Evaluators are now maintained as one shared active list and are no longer tied to district.
 - The same case model is preserved:
