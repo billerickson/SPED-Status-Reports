@@ -140,10 +140,15 @@ function previewTimeline(input) {
 }
 
 function searchCases(studentId, caseType) {
+  const normalizedStudentId = normalizeStudentId_(studentId);
+  if (!normalizedStudentId) {
+    return [];
+  }
+
   const rows = getTableRows_(SHEETS.cases, CASE_HEADERS);
   return rows
     .filter((row) => {
-      if (studentId && String(row.StudentID).trim() !== String(studentId).trim()) {
+      if (normalizeStudentId_(row.StudentID) !== normalizedStudentId) {
         return false;
       }
       if (caseType && row.CaseType !== caseType) {
@@ -236,7 +241,7 @@ function updateExistingCase(payload) {
 
     const merged = Object.assign({}, existing, {
       StudentName: payload.studentName,
-      StudentID: payload.studentId,
+      StudentID: normalizeStudentId_(payload.studentId),
       DOB: parseDate_(payload.dob),
       Campus: payload.campus,
       District: payload.district,
@@ -650,7 +655,7 @@ function buildStoredCaseRow_(caseId, payload, timeline, createdAt, updatedAt) {
     CaseID: caseId,
     CaseType: payload.caseType,
     StudentName: payload.studentName,
-    StudentID: payload.studentId,
+    StudentID: normalizeStudentId_(payload.studentId),
     DOB: parseDate_(payload.dob),
     Campus: payload.campus,
     District: payload.district,
@@ -892,9 +897,10 @@ function determinePrimaryDeadline_(
 }
 
 function duplicateOpenCaseExists_(studentId, caseType, ignoreCaseId) {
+  const normalizedStudentId = normalizeStudentId_(studentId);
   const rows = getTableRows_(SHEETS.cases, CASE_HEADERS);
   return rows.some((row) => {
-    if (String(row.StudentID).trim() !== String(studentId).trim()) {
+    if (normalizeStudentId_(row.StudentID) !== normalizedStudentId) {
       return false;
     }
     if (row.CaseType !== caseType) {
@@ -1045,6 +1051,19 @@ function isWeekend_(dateValue) {
 
 function isoDateKey_(dateValue) {
   return Utilities.formatDate(dateValue, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+}
+
+function normalizeStudentId_(value) {
+  const text = String(value === undefined || value === null ? '' : value).trim();
+  if (!text) {
+    return '';
+  }
+
+  if (/^\d+(\.0+)?$/.test(text)) {
+    return text.replace(/\.0+$/, '');
+  }
+
+  return text.toUpperCase();
 }
 
 function toObject_(headers, values) {

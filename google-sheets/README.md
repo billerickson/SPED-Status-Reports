@@ -84,6 +84,27 @@ After making admin changes:
 1. Run `SPED Status Reports -> Refresh Dashboard`.
 2. Reopen the sidebar if you want the latest dropdown values to reload immediately.
 
+## Where The Database Lives
+The data is stored inside this same Google Sheet on hidden backend tabs:
+- `Cases`
+- `CaseDocuments`
+- `Districts`
+- `Campuses`
+- `Evaluators`
+- `DistrictCalendars`
+
+To view them:
+1. Open the sidebar.
+2. Open the `Admin` section.
+3. Enter the admin code.
+4. Use `Show Backend Sheets`, or open a specific admin sheet from the menu.
+
+For milestone updates:
+1. Choose `Update Existing`.
+2. Search by `Student ID`.
+3. Select the existing case.
+4. Then edit milestone fields and save.
+
 ## Behavior changes from Excel
 - The app opens from a custom Google Sheets menu instead of `Workbook_Open`.
 - Forms are rendered in a sidebar using HTML Service instead of VBA `UserForm`s.

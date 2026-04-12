@@ -311,6 +311,7 @@
     <div id="searchSection" class="card hidden">
       <h2>Update Existing Case</h2>
       <div class="grid">
+        <div class="muted">Start here by searching for the student ID, then select the case you want to update.</div>
         <div class="row">
           <input id="searchStudentId" type="text" placeholder="Search by Student ID">
           <button class="secondary" onclick="runSearch()">Search</button>
@@ -321,6 +322,7 @@
 
     <div id="adminSection" class="card hidden">
       <h2>Admin</h2>
+      <div class="muted">The database lives in hidden backend sheets inside this spreadsheet: Cases, CaseDocuments, Districts, Campuses, Evaluators, and DistrictCalendars.</div>
       <div class="grid">
         <div>
           <label for="adminCode">Admin Access Code</label>
@@ -453,11 +455,12 @@
         state.mode = 'update';
         state.selectedCaseId = null;
         document.getElementById('searchSection').classList.remove('hidden');
-        document.getElementById('editorSection').classList.remove('hidden');
+        document.getElementById('editorSection').classList.add('hidden');
         document.getElementById('adminSection').classList.add('hidden');
         document.getElementById('editorTitle').textContent = `${document.getElementById('caseType').value} Milestone Update`;
         resetEditor(false);
         toggleCaseTypeFields();
+        document.getElementById('searchStudentId').focus();
       }
 
       function showAdmin() {
@@ -523,6 +526,11 @@
 
       function runSearch() {
         const studentId = document.getElementById('searchStudentId').value.trim();
+        if (!studentId) {
+          setStatus('Enter a Student ID to search for an existing case.', 'error');
+          document.getElementById('searchResults').innerHTML = '';
+          return;
+        }
         const caseType = document.getElementById('caseType').value;
         google.script.run
           .withSuccessHandler(renderSearchResults)
@@ -558,6 +566,7 @@
         google.script.run
           .withSuccessHandler((detail) => {
             state.selectedCaseId = detail.CaseID;
+            document.getElementById('editorSection').classList.remove('hidden');
             fillEditor(detail);
             setStatus(`Loaded ${detail.CaseID}.`, 'success');
           })
