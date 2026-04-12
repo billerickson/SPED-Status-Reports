@@ -46,12 +46,36 @@ Use these sheets for each type of maintenance:
   - set `Active = Yes` for campuses that should appear in dropdowns
 - `Evaluators`
   - one row per evaluator
-  - map each evaluator to a district
   - set `Active = Yes` for evaluators that should appear in dropdowns
 - `DistrictCalendars`
   - add one row per non-instructional date
   - include the district name and closure date
   - these rows drive the 15-school-day and FIIE timeline calculations
+
+### Building 5 District Calendars In One Sheet
+Use one shared `DistrictCalendars` sheet, not five different tabs.
+
+Structure it like this:
+
+| District | NonInstructionalDate | Note |
+| --- | --- | --- |
+| District A | 08/12/2026 | Staff development |
+| District A | 11/23/2026 | Thanksgiving break |
+| District B | 08/19/2026 | Staff development |
+| District B | 10/12/2026 | Fall holiday |
+| District C | 09/07/2026 | Labor Day |
+| District D | 11/25/2026 | Thanksgiving break |
+| District E | 12/21/2026 | Winter break |
+
+How it works:
+1. Each case already stores its district.
+2. When the app calculates dates, it looks only at `DistrictCalendars` rows matching that district.
+3. That means one tab can hold all 5 calendars safely, as long as every closure date is tagged with the correct district name.
+
+Recommended setup for 5 districts:
+- Keep the `District` name exactly the same in `Districts`, `Campuses`, and `DistrictCalendars`.
+- Add every non-instructional date for all 5 districts into `DistrictCalendars`.
+- If two districts share the same holiday, enter two rows, one for each district.
 
 After making admin changes:
 1. Run `SPED Status Reports -> Refresh Dashboard`.
@@ -62,6 +86,7 @@ After making admin changes:
 - Forms are rendered in a sidebar using HTML Service instead of VBA `UserForm`s.
 - Backend sheets are hidden and can be protected, but file sharing permissions remain the main security boundary.
 - `New Case -> Initial` now shows only intake fields; milestone dates and needed services are reserved for `Update Existing`.
+- Evaluators are now maintained as one shared active list and are no longer tied to district.
 - The same case model is preserved:
   - `Initial` and `Re-evaluation`
   - milestone updates

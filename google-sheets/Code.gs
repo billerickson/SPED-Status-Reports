@@ -60,7 +60,7 @@ const CASE_HEADERS = [
 const DOCUMENT_HEADERS = ['DocumentID', 'CaseID', 'DocumentLabel', 'DocumentPath', 'AddedAt'];
 const DISTRICT_HEADERS = ['District', 'ResponseSchoolDays', 'FIIESchoolDays', 'ARDCalendarDays', 'Active'];
 const CAMPUS_HEADERS = ['Campus', 'District', 'Active'];
-const EVALUATOR_HEADERS = ['LeadEvaluator', 'District', 'Email', 'Active'];
+const EVALUATOR_HEADERS = ['LeadEvaluator', 'Email', 'Active'];
 const CALENDAR_HEADERS = ['District', 'NonInstructionalDate', 'Note'];
 
 const SERVICE_FIELDS = [
@@ -120,7 +120,6 @@ function getAppBootstrap() {
     })),
     evaluators: getActiveRows_(SHEETS.evaluators).map((row) => ({
       evaluator: row.LeadEvaluator,
-      district: row.District,
       email: row.Email,
     })),
   };
@@ -461,7 +460,6 @@ function seedReferenceData_() {
 
   maybeAppendSeedRow_(SHEETS.evaluators, EVALUATOR_HEADERS, {
     LeadEvaluator: 'Sample Evaluator',
-    District: 'Sample ISD',
     Email: 'sample@example.org',
     Active: 'Yes',
   });

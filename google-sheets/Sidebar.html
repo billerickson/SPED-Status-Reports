@@ -377,7 +377,7 @@
         });
 
         document.getElementById('campus').addEventListener('change', syncDistrictFromCampus);
-        document.getElementById('district').addEventListener('change', refreshEvaluatorOptions);
+        document.getElementById('district').addEventListener('change', updateTimelinePreview);
 
         google.script.run
           .withSuccessHandler((bootstrap) => {
@@ -423,9 +423,7 @@
       }
 
       function refreshEvaluatorOptions() {
-        const district = document.getElementById('district').value;
         const options = state.bootstrap.evaluators
-          .filter((item) => !district || item.district === district)
           .map((item) => ({ value: item.evaluator, label: item.evaluator }));
         fillSelect('leadEvaluator', options, true);
       }
