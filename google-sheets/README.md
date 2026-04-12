@@ -21,6 +21,7 @@ This folder contains a Google Sheets adaptation of the SPED Status Reports workf
    - `appsscript.json`
 4. Update the `ADMIN_ACCESS_CODE` constant in `Code.gs`.
 5. Add admin Google account emails to `ADMIN_EDITOR_EMAILS` in `Code.gs`.
+   Use full email addresses such as `name@district.org`.
 6. Run `installSpedStatusReports()` once from the Apps Script editor.
 7. Refresh the spreadsheet.
 8. Use the `SPED Status Reports` custom menu to open the app.
@@ -95,7 +96,7 @@ The data is stored inside this same Google Sheet on visible protected tabs:
 - `DistrictCalendars`
 
 They are visible to everyone who can open the spreadsheet.
-Direct sheet edits are limited by Google Sheets protection to the admin accounts listed in `ADMIN_EDITOR_EMAILS` plus the installing/admin user.
+Direct sheet edits are limited by Google Sheets protection to the admin accounts listed in `ADMIN_EDITOR_EMAILS`.
 
 To manage the protections:
 1. Open the sidebar.

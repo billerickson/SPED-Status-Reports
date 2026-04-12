@@ -499,17 +499,6 @@ function showAllSheets_() {
 
 function getAdminEditorEmails_() {
   const emails = [];
-  const effectiveUser = Session.getEffectiveUser().getEmail();
-  const activeUser = Session.getActiveUser().getEmail();
-
-  if (effectiveUser) {
-    emails.push(effectiveUser);
-  }
-
-  if (activeUser) {
-    emails.push(activeUser);
-  }
-
   ADMIN_EDITOR_EMAILS.forEach((email) => {
     if (email) {
       emails.push(String(email).trim());
