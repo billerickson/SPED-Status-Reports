@@ -61,7 +61,7 @@ const DOCUMENT_HEADERS = ['DocumentID', 'CaseID', 'DocumentLabel', 'DocumentPath
 const DISTRICT_HEADERS = ['District', 'ResponseSchoolDays', 'FIIESchoolDays', 'ARDCalendarDays', 'Active'];
 const CAMPUS_HEADERS = ['Campus', 'District', 'Active'];
 const EVALUATOR_HEADERS = ['LeadEvaluator', 'Email', 'Active'];
-const CALENDAR_HEADERS = ['District', 'NonInstructionalDate', 'Note'];
+const CALENDAR_BASE_HEADERS = ['Date', 'Weekday'];
 
 const SERVICE_FIELDS = [
   'Service_SchoolPsychologist',
@@ -88,16 +88,26 @@ function onOpen() {
     .addItem('Open Campuses (Admin)', 'openCampusesSheet')
     .addItem('Open Evaluators (Admin)', 'openEvaluatorsSheet')
     .addItem('Open Calendars (Admin)', 'openCalendarsSheet')
+    .addItem('Sync Calendar Grid', 'syncDistrictCalendarGrid')
     .addToUi();
 }
 
 function installSpedStatusReports() {
   ensureWorkbookScaffold_();
   seedReferenceData_();
+  syncDistrictCalendarSheet_();
   hideBackendSheets_();
   refreshDashboard();
   SpreadsheetApp.getUi().alert(
     'SPED Status Reports is ready. Update the sample district, campus, evaluator, calendar, and admin settings before production use.'
+  );
+}
+
+function syncDistrictCalendarGrid() {
+  ensureWorkbookScaffold_();
+  syncDistrictCalendarSheet_();
+  SpreadsheetApp.getUi().alert(
+    'District calendar grid synced. Weekends default to No, weekdays default to Yes, and existing Yes/No edits were preserved where possible.'
   );
 }
 
@@ -403,8 +413,9 @@ function ensureWorkbookScaffold_() {
   ensureSheet_(SHEETS.districts, DISTRICT_HEADERS);
   ensureSheet_(SHEETS.campuses, CAMPUS_HEADERS);
   ensureSheet_(SHEETS.evaluators, EVALUATOR_HEADERS);
-  ensureSheet_(SHEETS.calendars, CALENDAR_HEADERS);
+  ensureSheet_(SHEETS.calendars, CALENDAR_BASE_HEADERS);
   ensureSheet_(SHEETS.dashboard, ['SPED Status Reports Dashboard']);
+  syncDistrictCalendarSheet_();
 }
 
 function ensureSheet_(sheetName, headers) {
@@ -441,6 +452,86 @@ function applyProtection_(sheet) {
   const protection = sheet.protect();
   protection.setDescription(`SPED backend protection for ${sheet.getName()}`);
   return protection;
+}
+
+function syncDistrictCalendarSheet_() {
+  const sheet = SpreadsheetApp.getActive().getSheetByName(SHEETS.calendars);
+  const districtNames = getActiveColumnValues_(SHEETS.districts, 'District');
+  const headers = CALENDAR_BASE_HEADERS.concat(districtNames);
+  const existingData = getCalendarExistingState_(sheet);
+  const dateRows = buildSchoolYearDates_();
+
+  const values = dateRows.map((dateValue) => {
+    const key = isoDateKey_(dateValue);
+    const existingRow = existingData[key] || {};
+
+    return [
+      dateValue,
+      Utilities.formatDate(dateValue, Session.getScriptTimeZone(), 'EEEE'),
+      ...districtNames.map((districtName) => {
+        if (existingRow[districtName] !== undefined && existingRow[districtName] !== '') {
+          return existingRow[districtName];
+        }
+        return isWeekend_(dateValue) ? 'No' : 'Yes';
+      }),
+    ];
+  });
+
+  sheet.clear();
+  sheet.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight('bold');
+  sheet.setFrozenRows(1);
+
+  if (values.length) {
+    sheet.getRange(2, 1, values.length, headers.length).setValues(values);
+    sheet.getRange(2, 1, values.length, 1).setNumberFormat('mm/dd/yyyy');
+  }
+
+  sheet.autoResizeColumns(1, headers.length);
+}
+
+function getCalendarExistingState_(sheet) {
+  const lastRow = sheet.getLastRow();
+  const lastColumn = sheet.getLastColumn();
+  const state = {};
+
+  if (lastRow < 2 || lastColumn < 1) {
+    return state;
+  }
+
+  const headers = sheet.getRange(1, 1, 1, lastColumn).getValues()[0];
+  const values = sheet.getRange(2, 1, lastRow - 1, lastColumn).getValues();
+
+  values.forEach((row) => {
+    const dateValue = parseDate_(row[0]);
+    if (!dateValue) {
+      return;
+    }
+
+    const key = isoDateKey_(dateValue);
+    state[key] = {};
+
+    for (let columnIndex = CALENDAR_BASE_HEADERS.length; columnIndex < headers.length; columnIndex += 1) {
+      state[key][headers[columnIndex]] = row[columnIndex];
+    }
+  });
+
+  return state;
+}
+
+function buildSchoolYearDates_() {
+  const today = new Date();
+  const year = today.getMonth() >= 6 ? today.getFullYear() : today.getFullYear() - 1;
+  const start = new Date(year, 6, 1);
+  const end = new Date(year + 1, 5, 30);
+  const dates = [];
+  let cursor = new Date(start);
+
+  while (cursor <= end) {
+    dates.push(new Date(cursor));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  return dates;
 }
 
 function seedReferenceData_() {
@@ -692,10 +783,11 @@ function getDistrictRule_(districtName, ruleColumn, fallbackValue) {
 function addInstructionalDays_(startDate, daysToAdd, districtName) {
   let cursor = new Date(startDate);
   let counted = 0;
+  const calendarLookup = getDistrictCalendarLookup_(districtName);
 
   while (counted < Number(daysToAdd)) {
     cursor = addCalendarDays_(cursor, 1);
-    if (isInstructionalDay_(cursor, districtName)) {
+    if (isInstructionalDay_(cursor, districtName, calendarLookup)) {
       counted += 1;
     }
   }
@@ -703,17 +795,49 @@ function addInstructionalDays_(startDate, daysToAdd, districtName) {
   return cursor;
 }
 
-function isInstructionalDay_(dateValue, districtName) {
-  const day = dateValue.getDay();
-  if (day === 0 || day === 6) {
+function isInstructionalDay_(dateValue, districtName, calendarLookup) {
+  if (isWeekend_(dateValue)) {
     return false;
   }
 
-  const rows = getTableRows_(SHEETS.calendars, CALENDAR_HEADERS);
-  return !rows.some((row) => {
-    const holiday = parseDate_(row.NonInstructionalDate);
-    return row.District === districtName && holiday && sameDay_(holiday, dateValue);
+  const lookup = calendarLookup || getDistrictCalendarLookup_(districtName);
+  const value = lookup[isoDateKey_(dateValue)];
+
+  if (value === 'No') {
+    return false;
+  }
+  if (value === 'Yes') {
+    return true;
+  }
+
+  return true;
+}
+
+function getDistrictCalendarLookup_(districtName) {
+  const sheet = SpreadsheetApp.getActive().getSheetByName(SHEETS.calendars);
+  const lastRow = sheet.getLastRow();
+  const lastColumn = sheet.getLastColumn();
+  const lookup = {};
+
+  if (lastRow < 2 || lastColumn < 3) {
+    return lookup;
+  }
+
+  const headers = sheet.getRange(1, 1, 1, lastColumn).getValues()[0];
+  const districtColumn = headers.indexOf(districtName);
+  if (districtColumn === -1) {
+    return lookup;
+  }
+
+  const values = sheet.getRange(2, 1, lastRow - 1, lastColumn).getValues();
+  values.forEach((row) => {
+    const dateValue = parseDate_(row[0]);
+    if (dateValue) {
+      lookup[isoDateKey_(dateValue)] = String(row[districtColumn] || '').trim();
+    }
   });
+
+  return lookup;
 }
 
 function addCalendarDays_(dateValue, dayCount) {
@@ -914,6 +1038,15 @@ function sameDay_(left, right) {
     left.getMonth() === right.getMonth() &&
     left.getDate() === right.getDate()
   );
+}
+
+function isWeekend_(dateValue) {
+  const day = dateValue.getDay();
+  return day === 0 || day === 6;
+}
+
+function isoDateKey_(dateValue) {
+  return Utilities.formatDate(dateValue, Session.getScriptTimeZone(), 'yyyy-MM-dd');
 }
 
 function toObject_(headers, values) {

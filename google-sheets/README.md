@@ -48,34 +48,37 @@ Use these sheets for each type of maintenance:
   - one row per evaluator
   - set `Active = Yes` for evaluators that should appear in dropdowns
 - `DistrictCalendars`
-  - add one row per non-instructional date
-  - include the district name and closure date
-  - these rows drive the 15-school-day and FIIE timeline calculations
+  - the sheet is preloaded with one school year of dates, from July 1 through June 30
+  - weekends default to `No`
+  - weekdays default to `Yes`
+  - each district gets its own column
+  - change any district/date cell to `No` when that district is not instructional that day
+  - these `Yes` / `No` values drive the 15-school-day and FIIE timeline calculations
 
 ### Building 5 District Calendars In One Sheet
 Use one shared `DistrictCalendars` sheet, not five different tabs.
 
 Structure it like this:
 
-| District | NonInstructionalDate | Note |
-| --- | --- | --- |
-| District A | 08/12/2026 | Staff development |
-| District A | 11/23/2026 | Thanksgiving break |
-| District B | 08/19/2026 | Staff development |
-| District B | 10/12/2026 | Fall holiday |
-| District C | 09/07/2026 | Labor Day |
-| District D | 11/25/2026 | Thanksgiving break |
-| District E | 12/21/2026 | Winter break |
+| Date | Weekday | District A | District B | District C | District D | District E |
+| --- | --- | --- | --- | --- | --- | --- |
+| 08/12/2026 | Wednesday | No | Yes | Yes | Yes | Yes |
+| 08/13/2026 | Thursday | Yes | Yes | Yes | Yes | Yes |
+| 09/07/2026 | Monday | No | No | No | No | No |
+| 11/23/2026 | Monday | No | Yes | Yes | Yes | Yes |
 
 How it works:
 1. Each case already stores its district.
-2. When the app calculates dates, it looks only at `DistrictCalendars` rows matching that district.
-3. That means one tab can hold all 5 calendars safely, as long as every closure date is tagged with the correct district name.
+2. When the app calculates dates, it checks the selected district's column for each date.
+3. `Yes` means instructional and counts toward due dates.
+4. `No` means non-instructional and does not count.
 
 Recommended setup for 5 districts:
-- Keep the `District` name exactly the same in `Districts`, `Campuses`, and `DistrictCalendars`.
-- Add every non-instructional date for all 5 districts into `DistrictCalendars`.
-- If two districts share the same holiday, enter two rows, one for each district.
+- Keep the district names exactly the same in the `Districts` sheet and the `DistrictCalendars` column headers.
+- If all districts are off on the same day, set that row to `No` across all district columns.
+- If only one district is off, change only that district's cell to `No`.
+- You do not need to enter weekends manually; the calendar grid preloads them as `No`.
+- If you add or remove districts later, run `SPED Status Reports -> Sync Calendar Grid`.
 
 After making admin changes:
 1. Run `SPED Status Reports -> Refresh Dashboard`.
