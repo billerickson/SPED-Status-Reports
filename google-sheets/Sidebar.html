@@ -250,39 +250,41 @@
           </div>
         </div>
 
-        <div class="grid two">
-          <div id="consentWrap">
-            <label for="actualConsentDate">Actual Consent Date</label>
-            <input id="actualConsentDate" type="date">
+        <div id="milestoneSection" class="grid">
+          <div class="grid two">
+            <div id="consentWrap">
+              <label for="actualConsentDate">Actual Consent Date</label>
+              <input id="actualConsentDate" type="date">
+            </div>
+            <div>
+              <label for="actualFIIEDate">Actual FIIE Date</label>
+              <input id="actualFIIEDate" type="date">
+            </div>
           </div>
+
+          <div class="grid two">
+            <div>
+              <label for="actualARDDate">Actual ARD Date</label>
+              <input id="actualARDDate" type="date">
+            </div>
+            <div>
+              <label for="overridePrimaryDeadline">Override Primary Deadline</label>
+              <input id="overridePrimaryDeadline" type="date">
+            </div>
+          </div>
+
           <div>
-            <label for="actualFIIEDate">Actual FIIE Date</label>
-            <input id="actualFIIEDate" type="date">
+            <label for="overrideReason">Override Reason</label>
+            <input id="overrideReason" type="text" placeholder="Required if override is used">
           </div>
         </div>
 
-        <div class="grid two">
-          <div>
-            <label for="actualARDDate">Actual ARD Date</label>
-            <input id="actualARDDate" type="date">
-          </div>
-          <div>
-            <label for="overridePrimaryDeadline">Override Primary Deadline</label>
-            <input id="overridePrimaryDeadline" type="date">
-          </div>
-        </div>
-
-        <div>
-          <label for="overrideReason">Override Reason</label>
-          <input id="overrideReason" type="text" placeholder="Required if override is used">
-        </div>
-
-        <div>
+        <div id="serviceSection">
           <label>Needed Areas / Services</label>
           <div id="services" class="service-list"></div>
         </div>
 
-        <div>
+        <div id="serviceNotesWrap">
           <label for="serviceNotes">Service Notes</label>
           <textarea id="serviceNotes"></textarea>
         </div>
@@ -466,9 +468,13 @@
 
       function toggleCaseTypeFields() {
         const isInitial = document.getElementById('caseType').value === 'Initial';
+        const isNewInitial = state.mode === 'new' && isInitial;
         document.getElementById('referralWrap').classList.toggle('hidden', !isInitial);
-        document.getElementById('consentWrap').classList.toggle('hidden', !isInitial);
         document.getElementById('reevalWrap').classList.toggle('hidden', isInitial);
+        document.getElementById('consentWrap').classList.toggle('hidden', !isInitial);
+        document.getElementById('milestoneSection').classList.toggle('hidden', isNewInitial);
+        document.getElementById('serviceSection').classList.toggle('hidden', isNewInitial);
+        document.getElementById('serviceNotesWrap').classList.toggle('hidden', isNewInitial);
         updateTimelinePreview();
       }
 

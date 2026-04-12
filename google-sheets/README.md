@@ -24,10 +24,44 @@ This folder contains a Google Sheets adaptation of the SPED Status Reports workf
 6. Refresh the spreadsheet.
 7. Use the `SPED Status Reports` custom menu to open the app.
 
+## How To Update Calendars And Dropdown Lists
+Use the `SPED Status Reports` menu in the spreadsheet.
+
+1. Open one of these admin sheets:
+   - `Open Districts (Admin)`
+   - `Open Campuses (Admin)`
+   - `Open Evaluators (Admin)`
+   - `Open Calendars (Admin)`
+2. Enter the admin access code.
+3. Edit the rows directly in the revealed sheet.
+
+Use these sheets for each type of maintenance:
+- `Districts`
+  - one row per district
+  - update `ResponseSchoolDays`, `FIIESchoolDays`, and `ARDCalendarDays`
+  - set `Active = Yes` for districts that should appear in dropdowns
+- `Campuses`
+  - one row per campus
+  - map each campus to its district
+  - set `Active = Yes` for campuses that should appear in dropdowns
+- `Evaluators`
+  - one row per evaluator
+  - map each evaluator to a district
+  - set `Active = Yes` for evaluators that should appear in dropdowns
+- `DistrictCalendars`
+  - add one row per non-instructional date
+  - include the district name and closure date
+  - these rows drive the 15-school-day and FIIE timeline calculations
+
+After making admin changes:
+1. Run `SPED Status Reports -> Refresh Dashboard`.
+2. Reopen the sidebar if you want the latest dropdown values to reload immediately.
+
 ## Behavior changes from Excel
 - The app opens from a custom Google Sheets menu instead of `Workbook_Open`.
 - Forms are rendered in a sidebar using HTML Service instead of VBA `UserForm`s.
 - Backend sheets are hidden and can be protected, but file sharing permissions remain the main security boundary.
+- `New Case -> Initial` now shows only intake fields; milestone dates and needed services are reserved for `Update Existing`.
 - The same case model is preserved:
   - `Initial` and `Re-evaluation`
   - milestone updates
