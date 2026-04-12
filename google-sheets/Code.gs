@@ -519,10 +519,8 @@ function getCalendarExistingState_(sheet) {
 }
 
 function buildSchoolYearDates_() {
-  const today = new Date();
-  const year = today.getMonth() >= 6 ? today.getFullYear() : today.getFullYear() - 1;
-  const start = new Date(year, 6, 1);
-  const end = new Date(year + 1, 5, 30);
+  const start = new Date(2026, 0, 1);
+  const end = new Date(2027, 5, 1);
   const dates = [];
   let cursor = new Date(start);
 

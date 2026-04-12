@@ -48,7 +48,7 @@ Use these sheets for each type of maintenance:
   - one row per evaluator
   - set `Active = Yes` for evaluators that should appear in dropdowns
 - `DistrictCalendars`
-  - the sheet is preloaded with one school year of dates, from July 1 through June 30
+  - the sheet is preloaded with dates from January 1, 2026 through June 1, 2027
   - weekends default to `No`
   - weekdays default to `Yes`
   - each district gets its own column
