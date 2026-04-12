@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #1b1b1b;
+        --muted: #5f6368;
+        --line: #d2d6dc;
+        --soft: #f6f8fb;
+        --brand: #0b57d0;
+        --brand-dark: #0842a0;
+        --danger: #b3261e;
+        --success: #137333;
+      }
+
+      body {
+        margin: 0;
+        padding: 16px;
+        font: 13px/1.45 Arial, sans-serif;
+        color: var(--ink);
+        background: #fff;
+      }
+
+      h1,
+      h2,
+      h3 {
+        margin: 0 0 10px;
+      }
+
+      h1 {
+        font-size: 18px;
+      }
+
+      h2 {
+        font-size: 14px;
+      }
+
+      .card {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 12px;
+        background: #fff;
+        margin-bottom: 12px;
+      }
+
+      .muted {
+        color: var(--muted);
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 8px;
+      }
+
+      .grid.two {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      label {
+        display: block;
+        font-weight: 600;
+        margin-bottom: 4px;
+      }
+
+      input,
+      select,
+      textarea,
+      button {
+        width: 100%;
+        box-sizing: border-box;
+        font: inherit;
+      }
+
+      input,
+      select,
+      textarea {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 8px 10px;
+        background: #fff;
+      }
+
+      textarea {
+        min-height: 70px;
+        resize: vertical;
+      }
+
+      button {
+        border: 0;
+        border-radius: 8px;
+        padding: 10px 12px;
+        background: var(--brand);
+        color: #fff;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      button.secondary {
+        background: #e8f0fe;
+        color: var(--brand-dark);
+      }
+
+      button.danger {
+        background: var(--danger);
+      }
+
+      .row {
+        display: flex;
+        gap: 8px;
+      }
+
+      .row > * {
+        flex: 1;
+      }
+
+      .service-list {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 6px 10px;
+      }
+
+      .service-item {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-weight: 400;
+      }
+
+      .service-item input {
+        width: auto;
+      }
+
+      .timeline {
+        padding: 10px;
+        border-radius: 8px;
+        background: var(--soft);
+      }
+
+      .result-list {
+        max-height: 160px;
+        overflow: auto;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+      }
+
+      .result-item {
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--line);
+        cursor: pointer;
+      }
+
+      .result-item:last-child {
+        border-bottom: 0;
+      }
+
+      .result-item.active {
+        background: #e8f0fe;
+      }
+
+      .status {
+        margin: 8px 0 12px;
+        padding: 8px 10px;
+        border-radius: 8px;
+        background: #eef3fd;
+      }
+
+      .status.error {
+        background: #fce8e6;
+        color: var(--danger);
+      }
+
+      .status.success {
+        background: #e6f4ea;
+        color: var(--success);
+      }
+
+      .hidden {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>SPED Status Reports</h1>
+    <div id="status" class="status muted">Loading configuration...</div>
+
+    <div class="card">
+      <div class="grid">
+        <div>
+          <label for="caseType">Case Type</label>
+          <select id="caseType"></select>
+        </div>
+        <div class="row">
+          <button class="secondary" onclick="startNewCase()">New Case</button>
+          <button class="secondary" onclick="startUpdate()">Update Existing</button>
+        </div>
+        <div class="row">
+          <button class="secondary" onclick="showAdmin()">Admin</button>
+          <button class="secondary" onclick="refreshDashboard()">Refresh Dashboard</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="editorSection" class="card hidden">
+      <h2 id="editorTitle">Case Entry</h2>
+      <div class="grid">
+        <div class="grid two">
+          <div>
+            <label for="studentName">Student Name</label>
+            <input id="studentName" type="text">
+          </div>
+          <div>
+            <label for="studentId">Student ID</label>
+            <input id="studentId" type="text">
+          </div>
+        </div>
+
+        <div class="grid two">
+          <div>
+            <label for="dob">DOB</label>
+            <input id="dob" type="date">
+          </div>
+          <div>
+            <label for="campus">Campus</label>
+            <select id="campus"></select>
+          </div>
+        </div>
+
+        <div class="grid two">
+          <div>
+            <label for="district">District</label>
+            <select id="district"></select>
+          </div>
+          <div>
+            <label for="leadEvaluator">Lead Evaluator</label>
+            <select id="leadEvaluator"></select>
+          </div>
+        </div>
+
+        <div class="grid two">
+          <div id="referralWrap">
+            <label for="referralReceivedDate">Referral Received Date</label>
+            <input id="referralReceivedDate" type="date">
+          </div>
+          <div id="reevalWrap">
+            <label for="reevalDueDate">Re-evaluation Due Date</label>
+            <input id="reevalDueDate" type="date">
+          </div>
+        </div>
+
+        <div class="grid two">
+          <div id="consentWrap">
+            <label for="actualConsentDate">Actual Consent Date</label>
+            <input id="actualConsentDate" type="date">
+          </div>
+          <div>
+            <label for="actualFIIEDate">Actual FIIE Date</label>
+            <input id="actualFIIEDate" type="date">
+          </div>
+        </div>
+
+        <div class="grid two">
+          <div>
+            <label for="actualARDDate">Actual ARD Date</label>
+            <input id="actualARDDate" type="date">
+          </div>
+          <div>
+            <label for="overridePrimaryDeadline">Override Primary Deadline</label>
+            <input id="overridePrimaryDeadline" type="date">
+          </div>
+        </div>
+
+        <div>
+          <label for="overrideReason">Override Reason</label>
+          <input id="overrideReason" type="text" placeholder="Required if override is used">
+        </div>
+
+        <div>
+          <label>Needed Areas / Services</label>
+          <div id="services" class="service-list"></div>
+        </div>
+
+        <div>
+          <label for="serviceNotes">Service Notes</label>
+          <textarea id="serviceNotes"></textarea>
+        </div>
+
+        <div>
+          <label for="documentLinks">Document Links</label>
+          <textarea id="documentLinks" placeholder="One per line. Example: Referral Packet|https://drive.google.com/..."></textarea>
+        </div>
+
+        <div class="timeline">
+          <div><strong>Response Due:</strong> <span id="tlResponseDue"></span></div>
+          <div><strong>Projected Consent:</strong> <span id="tlConsent"></span></div>
+          <div><strong>Projected FIIE Due:</strong> <span id="tlFIIE"></span></div>
+          <div><strong>Projected ARD Due:</strong> <span id="tlARD"></span></div>
+        </div>
+
+        <div class="row">
+          <button onclick="saveCase()">Save</button>
+          <button class="secondary" onclick="resetEditor()">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="searchSection" class="card hidden">
+      <h2>Update Existing Case</h2>
+      <div class="grid">
+        <div class="row">
+          <input id="searchStudentId" type="text" placeholder="Search by Student ID">
+          <button class="secondary" onclick="runSearch()">Search</button>
+        </div>
+        <div id="searchResults" class="result-list"></div>
+      </div>
+    </div>
+
+    <div id="adminSection" class="card hidden">
+      <h2>Admin</h2>
+      <div class="grid">
+        <div>
+          <label for="adminCode">Admin Access Code</label>
+          <input id="adminCode" type="password">
+        </div>
+        <div class="row">
+          <button class="secondary" onclick="runAdminAction('show')">Show Backend Sheets</button>
+          <button class="secondary" onclick="runAdminAction('hide')">Hide Backend Sheets</button>
+        </div>
+        <div class="row">
+          <button class="secondary" onclick="runOpenAdminSheet('districts')">Open Districts</button>
+          <button class="secondary" onclick="runOpenAdminSheet('campuses')">Open Campuses</button>
+        </div>
+        <div class="row">
+          <button class="secondary" onclick="runOpenAdminSheet('evaluators')">Open Evaluators</button>
+          <button class="secondary" onclick="runOpenAdminSheet('calendars')">Open Calendars</button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const SERVICE_LABELS = {
+        Service_SchoolPsychologist: 'School Psychologist',
+        Service_OccupationalTherapist: 'Occupational Therapist',
+        Service_PhysicalTherapist: 'Physical Therapist',
+        Service_CounselingEvaluation: 'Counseling Evaluation',
+        Service_FBA: 'FBA',
+        Service_SpeechPathologist: 'Speech Pathologist',
+        Service_VI: 'VI',
+        Service_DHH: 'DHH',
+        Service_LanguageDominanceBilingual: 'Language Dominance / Bilingual',
+      };
+
+      const state = {
+        bootstrap: null,
+        mode: null,
+        selectedCaseId: null,
+        searchResults: [],
+      };
+
+      const watchedFields = [
+        'district',
+        'referralReceivedDate',
+        'reevalDueDate',
+        'actualConsentDate',
+        'actualFIIEDate',
+      ];
+
+      document.addEventListener('DOMContentLoaded', init);
+
+      function init() {
+        watchedFields.forEach((id) => {
+          document.getElementById(id).addEventListener('change', updateTimelinePreview);
+        });
+
+        document.getElementById('campus').addEventListener('change', syncDistrictFromCampus);
+        document.getElementById('district').addEventListener('change', refreshEvaluatorOptions);
+
+        google.script.run
+          .withSuccessHandler((bootstrap) => {
+            state.bootstrap = bootstrap;
+            populateBootstrap(bootstrap);
+            setStatus('Ready.', 'success');
+          })
+          .withFailureHandler(handleError)
+          .getAppBootstrap();
+      }
+
+      function populateBootstrap(bootstrap) {
+        fillSelect('caseType', bootstrap.caseTypes.map((value) => ({ value, label: value })));
+        fillSelect('district', bootstrap.districts.map((value) => ({ value, label: value })), true);
+        fillSelect('campus', bootstrap.campuses.map((item) => ({ value: item.campus, label: item.campus })), true);
+        refreshEvaluatorOptions();
+
+        const services = document.getElementById('services');
+        services.innerHTML = '';
+        bootstrap.services.forEach((field) => {
+          const wrapper = document.createElement('label');
+          wrapper.className = 'service-item';
+          wrapper.innerHTML = `<input type="checkbox" id="${field}"><span>${SERVICE_LABELS[field] || field}</span>`;
+          services.appendChild(wrapper);
+        });
+      }
+
+      function fillSelect(id, options, includeBlank) {
+        const select = document.getElementById(id);
+        select.innerHTML = '';
+        if (includeBlank) {
+          const blank = document.createElement('option');
+          blank.value = '';
+          blank.textContent = '';
+          select.appendChild(blank);
+        }
+        options.forEach((option) => {
+          const el = document.createElement('option');
+          el.value = option.value;
+          el.textContent = option.label;
+          select.appendChild(el);
+        });
+      }
+
+      function refreshEvaluatorOptions() {
+        const district = document.getElementById('district').value;
+        const options = state.bootstrap.evaluators
+          .filter((item) => !district || item.district === district)
+          .map((item) => ({ value: item.evaluator, label: item.evaluator }));
+        fillSelect('leadEvaluator', options, true);
+      }
+
+      function syncDistrictFromCampus() {
+        const campus = document.getElementById('campus').value;
+        const match = state.bootstrap.campuses.find((item) => item.campus === campus);
+        if (match) {
+          document.getElementById('district').value = match.district;
+          refreshEvaluatorOptions();
+          updateTimelinePreview();
+        }
+      }
+
+      function startNewCase() {
+        state.mode = 'new';
+        state.selectedCaseId = null;
+        document.getElementById('editorSection').classList.remove('hidden');
+        document.getElementById('searchSection').classList.add('hidden');
+        document.getElementById('adminSection').classList.add('hidden');
+        document.getElementById('editorTitle').textContent = `${document.getElementById('caseType').value} Intake`;
+        resetEditor(false);
+        toggleCaseTypeFields();
+      }
+
+      function startUpdate() {
+        state.mode = 'update';
+        state.selectedCaseId = null;
+        document.getElementById('searchSection').classList.remove('hidden');
+        document.getElementById('editorSection').classList.remove('hidden');
+        document.getElementById('adminSection').classList.add('hidden');
+        document.getElementById('editorTitle').textContent = `${document.getElementById('caseType').value} Milestone Update`;
+        resetEditor(false);
+        toggleCaseTypeFields();
+      }
+
+      function showAdmin() {
+        document.getElementById('adminSection').classList.remove('hidden');
+      }
+
+      function toggleCaseTypeFields() {
+        const isInitial = document.getElementById('caseType').value === 'Initial';
+        document.getElementById('referralWrap').classList.toggle('hidden', !isInitial);
+        document.getElementById('consentWrap').classList.toggle('hidden', !isInitial);
+        document.getElementById('reevalWrap').classList.toggle('hidden', isInitial);
+        updateTimelinePreview();
+      }
+
+      function collectPayload() {
+        const services = {};
+        Object.keys(SERVICE_LABELS).forEach((field) => {
+          const el = document.getElementById(field);
+          services[field] = !!(el && el.checked);
+        });
+
+        return {
+          caseId: state.selectedCaseId,
+          caseType: document.getElementById('caseType').value,
+          studentName: document.getElementById('studentName').value.trim(),
+          studentId: document.getElementById('studentId').value.trim(),
+          dob: document.getElementById('dob').value,
+          campus: document.getElementById('campus').value,
+          district: document.getElementById('district').value,
+          leadEvaluator: document.getElementById('leadEvaluator').value,
+          referralReceivedDate: document.getElementById('referralReceivedDate').value,
+          reevalDueDate: document.getElementById('reevalDueDate').value,
+          actualConsentDate: document.getElementById('actualConsentDate').value,
+          actualFIIEDate: document.getElementById('actualFIIEDate').value,
+          actualARDDate: document.getElementById('actualARDDate').value,
+          overridePrimaryDeadline: document.getElementById('overridePrimaryDeadline').value,
+          overrideReason: document.getElementById('overrideReason').value.trim(),
+          adminCode: document.getElementById('adminCode').value,
+          serviceNotes: document.getElementById('serviceNotes').value,
+          documentLinks: document.getElementById('documentLinks').value,
+          services,
+        };
+      }
+
+      function updateTimelinePreview() {
+        const payload = collectPayload();
+        google.script.run
+          .withSuccessHandler(renderTimeline)
+          .withFailureHandler(handleError)
+          .previewTimeline(payload);
+      }
+
+      function renderTimeline(timeline) {
+        document.getElementById('tlResponseDue').textContent = timeline.responseDueDate || '';
+        document.getElementById('tlConsent').textContent = timeline.projectedConsentDate || '';
+        document.getElementById('tlFIIE').textContent = timeline.projectedFiiEDueDate || '';
+        document.getElementById('tlARD').textContent = timeline.projectedArdDueDate || '';
+      }
+
+      function runSearch() {
+        const studentId = document.getElementById('searchStudentId').value.trim();
+        const caseType = document.getElementById('caseType').value;
+        google.script.run
+          .withSuccessHandler(renderSearchResults)
+          .withFailureHandler(handleError)
+          .searchCases(studentId, caseType);
+      }
+
+      function renderSearchResults(results) {
+        state.searchResults = results;
+        const wrap = document.getElementById('searchResults');
+        wrap.innerHTML = '';
+
+        if (!results.length) {
+          wrap.innerHTML = '<div class="result-item">No matching cases found.</div>';
+          return;
+        }
+
+        results.forEach((item) => {
+          const div = document.createElement('div');
+          div.className = 'result-item';
+          div.textContent = `${item.caseId} | ${item.studentName} | ${item.status}`;
+          div.onclick = () => loadCase(item.caseId, div);
+          wrap.appendChild(div);
+        });
+      }
+
+      function loadCase(caseId, element) {
+        [...document.querySelectorAll('.result-item')].forEach((item) => item.classList.remove('active'));
+        if (element) {
+          element.classList.add('active');
+        }
+
+        google.script.run
+          .withSuccessHandler((detail) => {
+            state.selectedCaseId = detail.CaseID;
+            fillEditor(detail);
+            setStatus(`Loaded ${detail.CaseID}.`, 'success');
+          })
+          .withFailureHandler(handleError)
+          .getCaseDetails(caseId);
+      }
+
+      function fillEditor(detail) {
+        document.getElementById('caseType').value = detail.CaseType;
+        document.getElementById('studentName').value = detail.StudentName || '';
+        document.getElementById('studentId').value = detail.StudentID || '';
+        document.getElementById('dob').value = toInputDate(detail.DOB);
+        document.getElementById('campus').value = detail.Campus || '';
+        document.getElementById('district').value = detail.District || '';
+        refreshEvaluatorOptions();
+        document.getElementById('leadEvaluator').value = detail.LeadEvaluator || '';
+        document.getElementById('referralReceivedDate').value = toInputDate(detail.ReferralReceivedDate);
+        document.getElementById('reevalDueDate').value = toInputDate(detail.ReevalDueDate);
+        document.getElementById('actualConsentDate').value = toInputDate(detail.ActualConsentDate);
+        document.getElementById('actualFIIEDate').value = toInputDate(detail.ActualFIIEDate);
+        document.getElementById('actualARDDate').value = toInputDate(detail.ActualARDDate);
+        document.getElementById('overridePrimaryDeadline').value = toInputDate(detail.ManualPrimaryDeadline);
+        document.getElementById('overrideReason').value = detail.ManualOverrideReason || '';
+        document.getElementById('serviceNotes').value = detail.ServiceNotes || '';
+        document.getElementById('documentLinks').value = detail.documentsText || '';
+
+        Object.keys(SERVICE_LABELS).forEach((field) => {
+          const el = document.getElementById(field);
+          if (el) {
+            el.checked = !!detail.services[field];
+          }
+        });
+
+        renderTimeline(detail.timelinePreview || {});
+        toggleCaseTypeFields();
+      }
+
+      function saveCase() {
+        const payload = collectPayload();
+        const action = state.mode === 'update' ? 'updateExistingCase' : 'saveNewCase';
+
+        google.script.run
+          .withSuccessHandler((result) => {
+            state.selectedCaseId = result.caseId;
+            renderTimeline(result.timeline || {});
+            setStatus(`Saved ${result.caseId}.`, 'success');
+            if (state.mode !== 'update') {
+              resetEditor(false);
+            }
+          })
+          .withFailureHandler(handleError)
+          [action](payload);
+      }
+
+      function refreshDashboard() {
+        google.script.run
+          .withSuccessHandler(() => setStatus('Dashboard refreshed.', 'success'))
+          .withFailureHandler(handleError)
+          .refreshDashboard();
+      }
+
+      function runAdminAction(action) {
+        const adminCode = document.getElementById('adminCode').value;
+        const call = action === 'show' ? 'showBackendSheets' : 'hideBackendSheets';
+        google.script.run
+          .withSuccessHandler(() => setStatus('Admin action completed.', 'success'))
+          .withFailureHandler(handleError)
+          [call](adminCode);
+      }
+
+      function runOpenAdminSheet(which) {
+        const actions = {
+          districts: 'openDistrictsSheet',
+          campuses: 'openCampusesSheet',
+          evaluators: 'openEvaluatorsSheet',
+          calendars: 'openCalendarsSheet',
+        };
+        const adminCode = document.getElementById('adminCode').value;
+        google.script.run
+          .withSuccessHandler(() => setStatus('Opened admin sheet in the spreadsheet.', 'success'))
+          .withFailureHandler(handleError)
+          [actions[which]](adminCode);
+      }
+
+      function resetEditor(clearMode = true) {
+        [
+          'studentName',
+          'studentId',
+          'dob',
+          'campus',
+          'district',
+          'leadEvaluator',
+          'referralReceivedDate',
+          'reevalDueDate',
+          'actualConsentDate',
+          'actualFIIEDate',
+          'actualARDDate',
+          'overridePrimaryDeadline',
+          'overrideReason',
+          'serviceNotes',
+          'documentLinks',
+        ].forEach((id) => {
+          document.getElementById(id).value = '';
+        });
+
+        Object.keys(SERVICE_LABELS).forEach((field) => {
+          const el = document.getElementById(field);
+          if (el) {
+            el.checked = false;
+          }
+        });
+
+        state.selectedCaseId = null;
+        if (clearMode) {
+          state.mode = null;
+        }
+        renderTimeline({});
+        setStatus('Ready.', 'success');
+      }
+
+      function toInputDate(mmddyyyy) {
+        if (!mmddyyyy) {
+          return '';
+        }
+        const parts = mmddyyyy.split('/');
+        if (parts.length !== 3) {
+          return '';
+        }
+        return `${parts[2]}-${parts[0].padStart(2, '0')}-${parts[1].padStart(2, '0')}`;
+      }
+
+      function setStatus(message, kind) {
+        const el = document.getElementById('status');
+        el.textContent = message;
+        el.className = `status ${kind || ''}`.trim();
+      }
+
+      function handleError(error) {
+        setStatus(error && error.message ? error.message : String(error), 'error');
+      }
+
+      document.getElementById('caseType').addEventListener('change', toggleCaseTypeFields);
+    </script>
+  </body>
+</html>

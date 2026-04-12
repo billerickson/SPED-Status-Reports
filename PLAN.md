@@ -137,3 +137,12 @@ Build a workbook-first SPED case tracker in Excel VBA with an app-like `UserForm
 - The build will keep only latest field values, not a separate audit history.
 - The final implementation deliverable should be a pasteable VBA text file plus exact workbook setup instructions for forms and sheets.
 - The VBA should be organized so an Excel user can copy modules into the workbook, create the named forms, and run a setup macro to generate the required sheets and tables.
+
+## Google Sheets Compatibility Note
+- The Excel/VBA implementation does not run in Google Sheets as-is.
+- A Google Sheets version requires these architectural changes:
+  - replace VBA with Google Apps Script
+  - replace `UserForm` interfaces with an Apps Script HTML sidebar/dialog UI
+  - replace Excel Tables with structured backend sheets managed by Apps Script
+  - replace `VeryHidden` sheets with normal hidden sheets plus Google Sheets protections
+- The shared workflow, case model, timeline calculations, dashboard rules, and milestone/status behavior can stay substantially the same across both platforms.
