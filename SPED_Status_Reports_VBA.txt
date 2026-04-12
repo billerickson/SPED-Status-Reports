@@ -1,0 +1,1482 @@
+SPED Status Reports VBA Deliverable
+==================================
+
+Purpose
+-------
+This file contains a pasteable Excel VBA implementation for the Phase 1 SPED Status Reports workbook.
+It is designed to keep confidential data inside Excel while giving staff an app-like workflow through
+UserForms layered over hidden backend sheets.
+
+Important Limitations
+---------------------
+1. Standard VBA code can be copy/pasted directly into Excel modules.
+2. UserForm layouts cannot be recreated by plain text alone, so this file includes:
+   - the exact form names
+   - the required control names
+   - the code-behind to paste into each form
+3. Gmail and Google Calendar integration are intentionally excluded from Phase 1.
+4. Hidden/protected sheets improve privacy, but Excel is not a hardened security platform.
+
+Suggested Paste Order
+---------------------
+1. Insert standard modules and paste the code blocks in this order:
+   - modSpedConstants
+   - modSpedSetup
+   - modSpedDates
+   - modSpedCases
+   - modSpedDashboard
+   - modSpedSecurity
+   - modSpedLauncher
+2. Create the four UserForms named:
+   - frmLauncher
+   - frmCaseIntake
+   - frmCaseUpdate
+   - frmAdmin
+3. Add the controls listed in the "UserForm Control Manifest" section.
+4. Paste the code-behind into each UserForm.
+5. Paste the ThisWorkbook event code last.
+6. Run InstallSpedStatusReports one time.
+7. Replace the sample district, campus, evaluator, password, and admin code values before production use.
+
+Workbook Design
+---------------
+Visible sheet:
+- Dashboard
+
+VeryHidden / protected sheets:
+- Cases
+- CaseDocuments
+- Districts
+- Campuses
+- Evaluators
+- DistrictCalendars
+
+UserForm Control Manifest
+-------------------------
+
+frmLauncher
+- ComboBox: cboCaseType
+- CommandButton: cmdNewCase
+- CommandButton: cmdUpdateCase
+- CommandButton: cmdAdmin
+- CommandButton: cmdClose
+- Label: lblTitle
+
+frmCaseIntake
+- Label: lblFormTitle
+- Label: lblProjectedResponseDue
+- Label: lblProjectedConsent
+- Label: lblProjectedFIIEDue
+- Label: lblProjectedARDDue
+- TextBox: txtStudentName
+- TextBox: txtStudentID
+- TextBox: txtDOB
+- ComboBox: cboCampus
+- ComboBox: cboDistrict
+- ComboBox: cboLeadEvaluator
+- TextBox: txtReferralReceivedDate
+- TextBox: txtReevalDueDate
+- TextBox: txtActualConsentDate
+- TextBox: txtActualFIIEDate
+- TextBox: txtActualARDDate
+- TextBox: txtServiceNotes
+- TextBox: txtDocumentLinks
+- CheckBox: chkSchoolPsychologist
+- CheckBox: chkOccupationalTherapist
+- CheckBox: chkPhysicalTherapist
+- CheckBox: chkCounselingEvaluation
+- CheckBox: chkFBA
+- CheckBox: chkSpeechPathologist
+- CheckBox: chkVI
+- CheckBox: chkDHH
+- CheckBox: chkLanguageDominanceBilingual
+- CommandButton: cmdSave
+- CommandButton: cmdCancel
+
+Notes for txtDocumentLinks:
+- MultiLine = True
+- Enter one document per line
+- Use either:
+  - Referral Packet|\\server\path\file.pdf
+  - \\server\path\file.pdf
+
+frmCaseUpdate
+- Label: lblFormTitle
+- Label: lblCaseID
+- Label: lblProjectedResponseDue
+- Label: lblProjectedConsent
+- Label: lblProjectedFIIEDue
+- Label: lblProjectedARDDue
+- TextBox: txtSearchStudentID
+- ListBox: lstCases
+- TextBox: txtStudentName
+- TextBox: txtStudentID
+- TextBox: txtDOB
+- ComboBox: cboCampus
+- ComboBox: cboDistrict
+- ComboBox: cboLeadEvaluator
+- TextBox: txtReferralReceivedDate
+- TextBox: txtReevalDueDate
+- TextBox: txtActualConsentDate
+- TextBox: txtActualFIIEDate
+- TextBox: txtActualARDDate
+- TextBox: txtOverridePrimaryDeadline
+- TextBox: txtOverrideReason
+- TextBox: txtServiceNotes
+- TextBox: txtDocumentLinks
+- CheckBox: chkSchoolPsychologist
+- CheckBox: chkOccupationalTherapist
+- CheckBox: chkPhysicalTherapist
+- CheckBox: chkCounselingEvaluation
+- CheckBox: chkFBA
+- CheckBox: chkSpeechPathologist
+- CheckBox: chkVI
+- CheckBox: chkDHH
+- CheckBox: chkLanguageDominanceBilingual
+- CommandButton: cmdSearch
+- CommandButton: cmdApplyOverride
+- CommandButton: cmdSave
+- CommandButton: cmdCancel
+
+Notes for lstCases:
+- ColumnCount = 4
+- BoundColumn = 1
+- ColumnHeads = False
+- Suggested columns:
+  - Case ID
+  - Case Type
+  - Status
+  - Student Name
+
+frmAdmin
+- Label: lblTitle
+- CommandButton: cmdOpenDistricts
+- CommandButton: cmdOpenCampuses
+- CommandButton: cmdOpenEvaluators
+- CommandButton: cmdOpenCalendars
+- CommandButton: cmdRevealBackend
+- CommandButton: cmdHideBackend
+- CommandButton: cmdRefreshDashboard
+- CommandButton: cmdClose
+
+ThisWorkbook Code
+-----------------
+Paste this into the ThisWorkbook object after the forms and standard modules exist.
+
+```vb
+Option Explicit
+
+Private Sub Workbook_Open()
+    On Error GoTo SafeExit
+
+    EnsureWorkbookScaffold
+    RefreshDashboard
+    LaunchSpedStatusReports
+
+SafeExit:
+End Sub
+```
+
+Module: modSpedConstants
+------------------------
+```vb
+Option Explicit
+
+Public Const APP_PASSWORD As String = "CHANGE_ME_BEFORE_PRODUCTION"
+Public Const ADMIN_ACCESS_CODE As String = "CHANGE_ME_BEFORE_PRODUCTION"
+
+Public Const SHEET_CASES As String = "Cases"
+Public Const SHEET_CASE_DOCUMENTS As String = "CaseDocuments"
+Public Const SHEET_DISTRICTS As String = "Districts"
+Public Const SHEET_CAMPUSES As String = "Campuses"
+Public Const SHEET_EVALUATORS As String = "Evaluators"
+Public Const SHEET_CALENDARS As String = "DistrictCalendars"
+Public Const SHEET_DASHBOARD As String = "Dashboard"
+
+Public Const TABLE_CASES As String = "tblCases"
+Public Const TABLE_CASE_DOCUMENTS As String = "tblCaseDocuments"
+Public Const TABLE_DISTRICTS As String = "tblDistricts"
+Public Const TABLE_CAMPUSES As String = "tblCampuses"
+Public Const TABLE_EVALUATORS As String = "tblEvaluators"
+Public Const TABLE_CALENDARS As String = "tblDistrictCalendars"
+
+Public Const CASE_TYPE_INITIAL As String = "Initial"
+Public Const CASE_TYPE_REEVALUATION As String = "Re-evaluation"
+
+Public Const STATUS_REFERRAL_RECEIVED As String = "Referral Received"
+Public Const STATUS_IN_PROGRESS As String = "In Progress"
+Public Const STATUS_COMPLETE As String = "Complete"
+
+Public Function CaseHeaders() As Variant
+    CaseHeaders = Array( _
+        "CaseID", "CaseType", "StudentName", "StudentID", "DOB", "Campus", "District", _
+        "LeadEvaluator", "Status", "ReferralReceivedDate", "ResponseDueDate", _
+        "ProjectedConsentDate", "ActualConsentDate", "ProjectedFIIEDueDate", _
+        "ActualFIIEDate", "ProjectedARDDueDate", "ActualARDDate", "ReevalDueDate", _
+        "Service_SchoolPsychologist", "Service_OccupationalTherapist", _
+        "Service_PhysicalTherapist", "Service_CounselingEvaluation", "Service_FBA", _
+        "Service_SpeechPathologist", "Service_VI", "Service_DHH", _
+        "Service_LanguageDominanceBilingual", "ServiceNotes", "ManualPrimaryDeadline", _
+        "ManualOverrideReason", "PrimaryDeadline", "CreatedAt", "UpdatedAt")
+End Function
+
+Public Function CaseDocumentHeaders() As Variant
+    CaseDocumentHeaders = Array("DocumentID", "CaseID", "DocumentLabel", "DocumentPath", "AddedAt")
+End Function
+
+Public Function DistrictHeaders() As Variant
+    DistrictHeaders = Array("District", "ResponseSchoolDays", "FIIESchoolDays", "ARDCalendarDays", "Active")
+End Function
+
+Public Function CampusHeaders() As Variant
+    CampusHeaders = Array("Campus", "District", "Active")
+End Function
+
+Public Function EvaluatorHeaders() As Variant
+    EvaluatorHeaders = Array("LeadEvaluator", "District", "Email", "Active")
+End Function
+
+Public Function CalendarHeaders() As Variant
+    CalendarHeaders = Array("District", "NonInstructionalDate", "Note")
+End Function
+
+Public Function ServiceMap() As Variant
+    ServiceMap = Array( _
+        Array("Service_SchoolPsychologist", "chkSchoolPsychologist"), _
+        Array("Service_OccupationalTherapist", "chkOccupationalTherapist"), _
+        Array("Service_PhysicalTherapist", "chkPhysicalTherapist"), _
+        Array("Service_CounselingEvaluation", "chkCounselingEvaluation"), _
+        Array("Service_FBA", "chkFBA"), _
+        Array("Service_SpeechPathologist", "chkSpeechPathologist"), _
+        Array("Service_VI", "chkVI"), _
+        Array("Service_DHH", "chkDHH"), _
+        Array("Service_LanguageDominanceBilingual", "chkLanguageDominanceBilingual"))
+End Function
+```
+
+Module: modSpedSetup
+--------------------
+```vb
+Option Explicit
+
+Public Sub InstallSpedStatusReports()
+    Application.ScreenUpdating = False
+    Application.DisplayAlerts = False
+
+    EnsureWorkbookScaffold
+    SeedReferenceData
+    ProtectWorkbookApp
+    RefreshDashboard
+
+    Application.DisplayAlerts = True
+    Application.ScreenUpdating = True
+
+    MsgBox "SPED Status Reports has been installed. Review hidden admin tables, update passwords, and replace sample data before production use.", vbInformation
+End Sub
+
+Public Sub EnsureWorkbookScaffold()
+    Dim ws As Worksheet
+
+    Set ws = EnsureSheet(SHEET_CASES)
+    EnsureTable ws, TABLE_CASES, CaseHeaders()
+    ws.Visible = xlSheetVeryHidden
+
+    Set ws = EnsureSheet(SHEET_CASE_DOCUMENTS)
+    EnsureTable ws, TABLE_CASE_DOCUMENTS, CaseDocumentHeaders()
+    ws.Visible = xlSheetVeryHidden
+
+    Set ws = EnsureSheet(SHEET_DISTRICTS)
+    EnsureTable ws, TABLE_DISTRICTS, DistrictHeaders()
+    ws.Visible = xlSheetVeryHidden
+
+    Set ws = EnsureSheet(SHEET_CAMPUSES)
+    EnsureTable ws, TABLE_CAMPUSES, CampusHeaders()
+    ws.Visible = xlSheetVeryHidden
+
+    Set ws = EnsureSheet(SHEET_EVALUATORS)
+    EnsureTable ws, TABLE_EVALUATORS, EvaluatorHeaders()
+    ws.Visible = xlSheetVeryHidden
+
+    Set ws = EnsureSheet(SHEET_CALENDARS)
+    EnsureTable ws, TABLE_CALENDARS, CalendarHeaders()
+    ws.Visible = xlSheetVeryHidden
+
+    Set ws = EnsureSheet(SHEET_DASHBOARD)
+    ws.Visible = xlSheetVisible
+    ws.Activate
+End Sub
+
+Public Function EnsureSheet(ByVal sheetName As String) As Worksheet
+    On Error Resume Next
+    Set EnsureSheet = ThisWorkbook.Worksheets(sheetName)
+    On Error GoTo 0
+
+    If EnsureSheet Is Nothing Then
+        Set EnsureSheet = ThisWorkbook.Worksheets.Add(After:=ThisWorkbook.Worksheets(ThisWorkbook.Worksheets.Count))
+        EnsureSheet.Name = sheetName
+    End If
+End Function
+
+Public Sub EnsureTable(ByVal ws As Worksheet, ByVal tableName As String, ByVal headers As Variant)
+    Dim lo As ListObject
+    Dim i As Long
+    Dim headerRange As Range
+
+    On Error Resume Next
+    Set lo = ws.ListObjects(tableName)
+    On Error GoTo 0
+
+    If lo Is Nothing Then
+        ws.Cells.Clear
+        For i = LBound(headers) To UBound(headers)
+            ws.Cells(1, i + 1).Value = headers(i)
+        Next i
+        Set headerRange = ws.Range(ws.Cells(1, 1), ws.Cells(2, UBound(headers) + 1))
+        Set lo = ws.ListObjects.Add(xlSrcRange, headerRange, , xlYes)
+        lo.Name = tableName
+        If Not lo.DataBodyRange Is Nothing Then lo.DataBodyRange.Delete
+        ws.Rows(1).Font.Bold = True
+        ws.Cells.EntireColumn.AutoFit
+    End If
+End Sub
+
+Public Function GetTable(ByVal tableName As String) As ListObject
+    Dim ws As Worksheet
+    For Each ws In ThisWorkbook.Worksheets
+        On Error Resume Next
+        Set GetTable = ws.ListObjects(tableName)
+        On Error GoTo 0
+        If Not GetTable Is Nothing Then Exit Function
+    Next ws
+End Function
+
+Public Function ColumnIndex(ByVal lo As ListObject, ByVal columnName As String) As Long
+    Dim i As Long
+    For i = 1 To lo.ListColumns.Count
+        If StrComp(lo.ListColumns(i).Name, columnName, vbTextCompare) = 0 Then
+            ColumnIndex = i
+            Exit Function
+        End If
+    Next i
+    Err.Raise vbObjectError + 1000, "ColumnIndex", "Column not found: " & columnName
+End Function
+
+Public Sub SeedReferenceData()
+    SeedDistricts
+    SeedCampuses
+    SeedEvaluators
+End Sub
+
+Private Sub SeedDistricts()
+    Dim lo As ListObject
+    Dim rowRange As Range
+
+    Set lo = GetTable(TABLE_DISTRICTS)
+    If lo.ListRows.Count > 0 Then Exit Sub
+
+    Set rowRange = lo.ListRows.Add.Range
+    rowRange.Cells(1, ColumnIndex(lo, "District")).Value = "Sample ISD"
+    rowRange.Cells(1, ColumnIndex(lo, "ResponseSchoolDays")).Value = 15
+    rowRange.Cells(1, ColumnIndex(lo, "FIIESchoolDays")).Value = 45
+    rowRange.Cells(1, ColumnIndex(lo, "ARDCalendarDays")).Value = 30
+    rowRange.Cells(1, ColumnIndex(lo, "Active")).Value = "Yes"
+End Sub
+
+Private Sub SeedCampuses()
+    Dim lo As ListObject
+    Dim rowRange As Range
+
+    Set lo = GetTable(TABLE_CAMPUSES)
+    If lo.ListRows.Count > 0 Then Exit Sub
+
+    Set rowRange = lo.ListRows.Add.Range
+    rowRange.Cells(1, ColumnIndex(lo, "Campus")).Value = "Sample Elementary"
+    rowRange.Cells(1, ColumnIndex(lo, "District")).Value = "Sample ISD"
+    rowRange.Cells(1, ColumnIndex(lo, "Active")).Value = "Yes"
+End Sub
+
+Private Sub SeedEvaluators()
+    Dim lo As ListObject
+    Dim rowRange As Range
+
+    Set lo = GetTable(TABLE_EVALUATORS)
+    If lo.ListRows.Count > 0 Then Exit Sub
+
+    Set rowRange = lo.ListRows.Add.Range
+    rowRange.Cells(1, ColumnIndex(lo, "LeadEvaluator")).Value = "Sample Evaluator"
+    rowRange.Cells(1, ColumnIndex(lo, "District")).Value = "Sample ISD"
+    rowRange.Cells(1, ColumnIndex(lo, "Email")).Value = "sample@example.org"
+    rowRange.Cells(1, ColumnIndex(lo, "Active")).Value = "Yes"
+End Sub
+```
+
+Module: modSpedDates
+--------------------
+```vb
+Option Explicit
+
+Public Function GetDistrictRule(ByVal districtName As String, ByVal ruleColumn As String, ByVal fallbackValue As Long) As Long
+    Dim lo As ListObject
+    Dim dataRow As ListRow
+
+    Set lo = GetTable(TABLE_DISTRICTS)
+
+    For Each dataRow In lo.ListRows
+        If StrComp(CStr(dataRow.Range.Cells(1, ColumnIndex(lo, "District")).Value), districtName, vbTextCompare) = 0 Then
+            If IsNumeric(dataRow.Range.Cells(1, ColumnIndex(lo, ruleColumn)).Value) Then
+                GetDistrictRule = CLng(dataRow.Range.Cells(1, ColumnIndex(lo, ruleColumn)).Value)
+                Exit Function
+            End If
+        End If
+    Next dataRow
+
+    GetDistrictRule = fallbackValue
+End Function
+
+Public Function IsInstructionalDay(ByVal checkDate As Date, ByVal districtName As String) As Boolean
+    Dim weekdayNumber As Long
+    Dim lo As ListObject
+    Dim dataRow As ListRow
+
+    weekdayNumber = VBA.Weekday(checkDate, vbMonday)
+    If weekdayNumber > 5 Then Exit Function
+
+    Set lo = GetTable(TABLE_CALENDARS)
+    For Each dataRow In lo.ListRows
+        If StrComp(CStr(dataRow.Range.Cells(1, ColumnIndex(lo, "District")).Value), districtName, vbTextCompare) = 0 Then
+            If IsDate(dataRow.Range.Cells(1, ColumnIndex(lo, "NonInstructionalDate")).Value) Then
+                If CLng(CDate(dataRow.Range.Cells(1, ColumnIndex(lo, "NonInstructionalDate")).Value)) = CLng(checkDate) Then
+                    Exit Function
+                End If
+            End If
+        End If
+    Next dataRow
+
+    IsInstructionalDay = True
+End Function
+
+Public Function AddInstructionalDays(ByVal startDate As Date, ByVal daysToAdd As Long, ByVal districtName As String) As Date
+    Dim cursor As Date
+    Dim counted As Long
+
+    cursor = startDate
+    counted = 0
+
+    Do While counted < daysToAdd
+        cursor = cursor + 1
+        If IsInstructionalDay(cursor, districtName) Then counted = counted + 1
+    Loop
+
+    AddInstructionalDays = cursor
+End Function
+
+Public Function BuildProjectedDates(ByVal caseType As String, _
+                                    ByVal districtName As String, _
+                                    ByVal referralDate As Variant, _
+                                    ByVal actualConsentDate As Variant, _
+                                    ByVal actualFIIEDate As Variant, _
+                                    ByVal reevalDueDate As Variant) As Object
+    Dim result As Object
+    Dim responseDue As Variant
+    Dim consentAnchor As Variant
+    Dim fiieAnchor As Variant
+    Dim fiieDue As Variant
+    Dim ardDue As Variant
+
+    Set result = CreateObject("Scripting.Dictionary")
+    result("ResponseDueDate") = vbNullString
+    result("ProjectedConsentDate") = vbNullString
+    result("ProjectedFIIEDueDate") = vbNullString
+    result("ProjectedARDDueDate") = vbNullString
+
+    If StrComp(caseType, CASE_TYPE_INITIAL, vbTextCompare) = 0 Then
+        If IsDate(referralDate) Then
+            responseDue = AddInstructionalDays(CDate(referralDate), GetDistrictRule(districtName, "ResponseSchoolDays", 15), districtName)
+            result("ResponseDueDate") = responseDue
+            result("ProjectedConsentDate") = responseDue
+
+            If IsDate(actualConsentDate) Then
+                consentAnchor = CDate(actualConsentDate)
+            Else
+                consentAnchor = responseDue
+            End If
+
+            fiieDue = AddInstructionalDays(CDate(consentAnchor), GetDistrictRule(districtName, "FIIESchoolDays", 45), districtName)
+            result("ProjectedFIIEDueDate") = fiieDue
+
+            If IsDate(actualFIIEDate) Then
+                fiieAnchor = CDate(actualFIIEDate)
+            Else
+                fiieAnchor = fiieDue
+            End If
+
+            ardDue = DateAdd("d", GetDistrictRule(districtName, "ARDCalendarDays", 30), CDate(fiieAnchor))
+            result("ProjectedARDDueDate") = ardDue
+        End If
+    Else
+        If IsDate(reevalDueDate) Then
+            result("ProjectedFIIEDueDate") = CDate(reevalDueDate)
+            If IsDate(actualFIIEDate) Then
+                result("ProjectedARDDueDate") = DateAdd("d", GetDistrictRule(districtName, "ARDCalendarDays", 30), CDate(actualFIIEDate))
+            Else
+                result("ProjectedARDDueDate") = DateAdd("d", GetDistrictRule(districtName, "ARDCalendarDays", 30), CDate(reevalDueDate))
+            End If
+        End If
+    End If
+
+    Set BuildProjectedDates = result
+End Function
+
+Public Function FormatDateOrBlank(ByVal inputValue As Variant) As String
+    If IsDate(inputValue) Then
+        FormatDateOrBlank = Format$(CDate(inputValue), "mm/dd/yyyy")
+    Else
+        FormatDateOrBlank = vbNullString
+    End If
+End Function
+```
+
+Module: modSpedCases
+--------------------
+```vb
+Option Explicit
+
+Public Function GenerateCaseID(ByVal caseType As String) As String
+    Dim prefix As String
+    prefix = "INI"
+    If StrComp(caseType, CASE_TYPE_REEVALUATION, vbTextCompare) = 0 Then prefix = "REE"
+    GenerateCaseID = prefix & "-" & Format$(Now, "yyyymmdd-hhnnss")
+End Function
+
+Public Sub PopulateReferenceLists(ByVal frm As Object)
+    PopulateComboFromTable frm.cboCampus, TABLE_CAMPUSES, "Campus", "Active", "Yes"
+    PopulateComboFromTable frm.cboDistrict, TABLE_DISTRICTS, "District", "Active", "Yes"
+
+    If Len(Trim$(SafeControlValue(frm, "cboDistrict"))) > 0 Then
+        PopulateEvaluatorsForDistrict frm, SafeControlValue(frm, "cboDistrict")
+    Else
+        PopulateComboFromTable frm.cboLeadEvaluator, TABLE_EVALUATORS, "LeadEvaluator", "Active", "Yes"
+    End If
+End Sub
+
+Public Sub PopulateEvaluatorsForDistrict(ByVal frm As Object, ByVal districtName As String)
+    Dim lo As ListObject
+    Dim dataRow As ListRow
+
+    frm.cboLeadEvaluator.Clear
+    Set lo = GetTable(TABLE_EVALUATORS)
+
+    For Each dataRow In lo.ListRows
+        If StrComp(CStr(dataRow.Range.Cells(1, ColumnIndex(lo, "Active")).Value), "Yes", vbTextCompare) = 0 Then
+            If StrComp(CStr(dataRow.Range.Cells(1, ColumnIndex(lo, "District")).Value), districtName, vbTextCompare) = 0 Then
+                frm.cboLeadEvaluator.AddItem CStr(dataRow.Range.Cells(1, ColumnIndex(lo, "LeadEvaluator")).Value)
+            End If
+        End If
+    Next dataRow
+End Sub
+
+Public Sub PopulateComboFromTable(ByVal cbo As Object, ByVal tableName As String, ByVal valueColumn As String, _
+                                  Optional ByVal filterColumn As String = vbNullString, _
+                                  Optional ByVal filterValue As String = vbNullString)
+    Dim lo As ListObject
+    Dim dataRow As ListRow
+    Dim includeRow As Boolean
+
+    cbo.Clear
+    Set lo = GetTable(tableName)
+
+    For Each dataRow In lo.ListRows
+        includeRow = True
+        If Len(filterColumn) > 0 Then
+            includeRow = StrComp(CStr(dataRow.Range.Cells(1, ColumnIndex(lo, filterColumn)).Value), filterValue, vbTextCompare) = 0
+        End If
+        If includeRow Then cbo.AddItem CStr(dataRow.Range.Cells(1, ColumnIndex(lo, valueColumn)).Value)
+    Next dataRow
+End Sub
+
+Public Function SafeControlValue(ByVal frm As Object, ByVal controlName As String) As String
+    On Error Resume Next
+    SafeControlValue = Trim$(CStr(frm.Controls(controlName).Value))
+    On Error GoTo 0
+End Function
+
+Public Function ResolveDistrictFromCampus(ByVal campusName As String) As String
+    Dim lo As ListObject
+    Dim dataRow As ListRow
+
+    Set lo = GetTable(TABLE_CAMPUSES)
+
+    For Each dataRow In lo.ListRows
+        If StrComp(CStr(dataRow.Range.Cells(1, ColumnIndex(lo, "Campus")).Value), campusName, vbTextCompare) = 0 Then
+            ResolveDistrictFromCampus = CStr(dataRow.Range.Cells(1, ColumnIndex(lo, "District")).Value)
+            Exit Function
+        End If
+    Next dataRow
+End Function
+
+Public Function DuplicateOpenCaseExists(ByVal studentID As String, ByVal caseType As String, Optional ByVal ignoreCaseID As String = vbNullString) As Boolean
+    Dim lo As ListObject
+    Dim dataRow As ListRow
+
+    Set lo = GetTable(TABLE_CASES)
+
+    For Each dataRow In lo.ListRows
+        If StrComp(CStr(dataRow.Range.Cells(1, ColumnIndex(lo, "StudentID")).Value), studentID, vbTextCompare) = 0 Then
+            If StrComp(CStr(dataRow.Range.Cells(1, ColumnIndex(lo, "CaseType")).Value), caseType, vbTextCompare) = 0 Then
+                If StrComp(CStr(dataRow.Range.Cells(1, ColumnIndex(lo, "Status")).Value), STATUS_COMPLETE, vbTextCompare) <> 0 Then
+                    If StrComp(CStr(dataRow.Range.Cells(1, ColumnIndex(lo, "CaseID")).Value), ignoreCaseID, vbTextCompare) <> 0 Then
+                        DuplicateOpenCaseExists = True
+                        Exit Function
+                    End If
+                End If
+            End If
+        End If
+    Next dataRow
+End Function
+
+Public Function DetermineStatus(ByVal actualConsentDate As Variant, ByVal actualARDDate As Variant) As String
+    If IsDate(actualARDDate) Then
+        DetermineStatus = STATUS_COMPLETE
+    ElseIf IsDate(actualConsentDate) Then
+        DetermineStatus = STATUS_IN_PROGRESS
+    Else
+        DetermineStatus = STATUS_REFERRAL_RECEIVED
+    End If
+End Function
+
+Public Function DeterminePrimaryDeadline(ByVal caseType As String, ByVal responseDueDate As Variant, _
+                                         ByVal projectedFIIEDueDate As Variant, ByVal projectedARDDueDate As Variant, _
+                                         ByVal actualConsentDate As Variant, ByVal actualFIIEDate As Variant, _
+                                         ByVal actualARDDate As Variant, ByVal reevalDueDate As Variant, _
+                                         ByVal manualPrimaryDeadline As Variant) As Variant
+    If IsDate(manualPrimaryDeadline) Then
+        DeterminePrimaryDeadline = CDate(manualPrimaryDeadline)
+        Exit Function
+    End If
+
+    If StrComp(caseType, CASE_TYPE_INITIAL, vbTextCompare) = 0 Then
+        If Not IsDate(actualConsentDate) Then
+            DeterminePrimaryDeadline = responseDueDate
+        ElseIf Not IsDate(actualFIIEDate) Then
+            DeterminePrimaryDeadline = projectedFIIEDueDate
+        ElseIf Not IsDate(actualARDDate) Then
+            DeterminePrimaryDeadline = projectedARDDueDate
+        Else
+            DeterminePrimaryDeadline = actualARDDate
+        End If
+    Else
+        If Not IsDate(actualFIIEDate) Then
+            DeterminePrimaryDeadline = reevalDueDate
+        ElseIf Not IsDate(actualARDDate) Then
+            DeterminePrimaryDeadline = projectedARDDueDate
+        Else
+            DeterminePrimaryDeadline = actualARDDate
+        End If
+    End If
+End Function
+
+Public Function SaveCaseFromIntakeForm(ByVal frm As Object) As Boolean
+    Dim lo As ListObject
+    Dim rowRange As Range
+    Dim caseType As String
+    Dim districtName As String
+    Dim caseID As String
+    Dim projectedDates As Object
+    Dim referralDate As Variant
+    Dim reevalDueDate As Variant
+    Dim actualConsentDate As Variant
+    Dim actualFIIEDate As Variant
+    Dim actualARDDate As Variant
+
+    caseType = frm.Tag
+    districtName = Trim$(frm.cboDistrict.Value)
+
+    If Len(Trim$(frm.txtStudentName.Value)) = 0 Then
+        MsgBox "Student Name is required.", vbExclamation
+        Exit Function
+    End If
+
+    If Len(Trim$(frm.txtStudentID.Value)) = 0 Then
+        MsgBox "Student ID is required.", vbExclamation
+        Exit Function
+    End If
+
+    If Len(districtName) = 0 Then
+        MsgBox "District is required.", vbExclamation
+        Exit Function
+    End If
+
+    If DuplicateOpenCaseExists(frm.txtStudentID.Value, caseType) Then
+        MsgBox "An open " & caseType & " case already exists for this student.", vbExclamation
+        Exit Function
+    End If
+
+    referralDate = ParseDateOrBlank(frm.txtReferralReceivedDate.Value)
+    reevalDueDate = ParseDateOrBlank(frm.txtReevalDueDate.Value)
+    actualConsentDate = ParseDateOrBlank(frm.txtActualConsentDate.Value)
+    actualFIIEDate = ParseDateOrBlank(frm.txtActualFIIEDate.Value)
+    actualARDDate = ParseDateOrBlank(frm.txtActualARDDate.Value)
+
+    If StrComp(caseType, CASE_TYPE_INITIAL, vbTextCompare) = 0 And Not IsDate(referralDate) Then
+        MsgBox "Referral Received Date is required for Initial cases.", vbExclamation
+        Exit Function
+    End If
+
+    If StrComp(caseType, CASE_TYPE_REEVALUATION, vbTextCompare) = 0 And Not IsDate(reevalDueDate) Then
+        MsgBox "Re-evaluation Due Date is required for Re-evaluation cases.", vbExclamation
+        Exit Function
+    End If
+
+    Set projectedDates = BuildProjectedDates(caseType, districtName, referralDate, actualConsentDate, actualFIIEDate, reevalDueDate)
+
+    Set lo = GetTable(TABLE_CASES)
+    Set rowRange = lo.ListRows.Add.Range
+
+    caseID = GenerateCaseID(caseType)
+
+    rowRange.Cells(1, ColumnIndex(lo, "CaseID")).Value = caseID
+    rowRange.Cells(1, ColumnIndex(lo, "CaseType")).Value = caseType
+    rowRange.Cells(1, ColumnIndex(lo, "StudentName")).Value = Trim$(frm.txtStudentName.Value)
+    rowRange.Cells(1, ColumnIndex(lo, "StudentID")).Value = Trim$(frm.txtStudentID.Value)
+    rowRange.Cells(1, ColumnIndex(lo, "DOB")).Value = ParseDateOrBlank(frm.txtDOB.Value)
+    rowRange.Cells(1, ColumnIndex(lo, "Campus")).Value = Trim$(frm.cboCampus.Value)
+    rowRange.Cells(1, ColumnIndex(lo, "District")).Value = districtName
+    rowRange.Cells(1, ColumnIndex(lo, "LeadEvaluator")).Value = Trim$(frm.cboLeadEvaluator.Value)
+    rowRange.Cells(1, ColumnIndex(lo, "ReferralReceivedDate")).Value = referralDate
+    rowRange.Cells(1, ColumnIndex(lo, "ResponseDueDate")).Value = projectedDates("ResponseDueDate")
+    rowRange.Cells(1, ColumnIndex(lo, "ProjectedConsentDate")).Value = projectedDates("ProjectedConsentDate")
+    rowRange.Cells(1, ColumnIndex(lo, "ActualConsentDate")).Value = actualConsentDate
+    rowRange.Cells(1, ColumnIndex(lo, "ProjectedFIIEDueDate")).Value = projectedDates("ProjectedFIIEDueDate")
+    rowRange.Cells(1, ColumnIndex(lo, "ActualFIIEDate")).Value = actualFIIEDate
+    rowRange.Cells(1, ColumnIndex(lo, "ProjectedARDDueDate")).Value = projectedDates("ProjectedARDDueDate")
+    rowRange.Cells(1, ColumnIndex(lo, "ActualARDDate")).Value = actualARDDate
+    rowRange.Cells(1, ColumnIndex(lo, "ReevalDueDate")).Value = reevalDueDate
+    rowRange.Cells(1, ColumnIndex(lo, "ServiceNotes")).Value = Trim$(frm.txtServiceNotes.Value)
+    rowRange.Cells(1, ColumnIndex(lo, "ManualPrimaryDeadline")).Value = vbNullString
+    rowRange.Cells(1, ColumnIndex(lo, "ManualOverrideReason")).Value = vbNullString
+    rowRange.Cells(1, ColumnIndex(lo, "Status")).Value = DetermineStatus(actualConsentDate, actualARDDate)
+    rowRange.Cells(1, ColumnIndex(lo, "PrimaryDeadline")).Value = DeterminePrimaryDeadline(caseType, projectedDates("ResponseDueDate"), projectedDates("ProjectedFIIEDueDate"), projectedDates("ProjectedARDDueDate"), actualConsentDate, actualFIIEDate, actualARDDate, reevalDueDate, vbNullString)
+    rowRange.Cells(1, ColumnIndex(lo, "CreatedAt")).Value = Now
+    rowRange.Cells(1, ColumnIndex(lo, "UpdatedAt")).Value = Now
+
+    PersistServices rowRange, lo, frm
+    ReplaceCaseDocuments caseID, frm.txtDocumentLinks.Value
+
+    RefreshDashboard
+    SaveCaseFromIntakeForm = True
+
+    MsgBox "Case created successfully: " & caseID, vbInformation
+End Function
+
+Public Function UpdateCaseFromForm(ByVal frm As Object) As Boolean
+    Dim lo As ListObject
+    Dim targetRow As Range
+    Dim caseID As String
+    Dim caseType As String
+    Dim districtName As String
+    Dim referralDate As Variant
+    Dim actualConsentDate As Variant
+    Dim actualFIIEDate As Variant
+    Dim actualARDDate As Variant
+    Dim reevalDueDate As Variant
+    Dim manualPrimaryDeadline As Variant
+    Dim projectedDates As Object
+
+    caseID = frm.lblCaseID.Caption
+    If Len(caseID) = 0 Then
+        MsgBox "Select a case before saving updates.", vbExclamation
+        Exit Function
+    End If
+
+    Set lo = GetTable(TABLE_CASES)
+    Set targetRow = FindCaseRow(caseID)
+
+    caseType = CStr(targetRow.Cells(1, ColumnIndex(lo, "CaseType")).Value)
+    districtName = Trim$(frm.cboDistrict.Value)
+    referralDate = ParseDateOrBlank(frm.txtReferralReceivedDate.Value)
+    actualConsentDate = ParseDateOrBlank(frm.txtActualConsentDate.Value)
+    actualFIIEDate = ParseDateOrBlank(frm.txtActualFIIEDate.Value)
+    actualARDDate = ParseDateOrBlank(frm.txtActualARDDate.Value)
+    reevalDueDate = ParseDateOrBlank(frm.txtReevalDueDate.Value)
+    manualPrimaryDeadline = ParseDateOrBlank(frm.txtOverridePrimaryDeadline.Value)
+
+    If DuplicateOpenCaseExists(frm.txtStudentID.Value, caseType, caseID) Then
+        MsgBox "A different open case of this type already exists for this student.", vbExclamation
+        Exit Function
+    End If
+
+    Set projectedDates = BuildProjectedDates(caseType, districtName, referralDate, actualConsentDate, actualFIIEDate, reevalDueDate)
+
+    targetRow.Cells(1, ColumnIndex(lo, "StudentName")).Value = Trim$(frm.txtStudentName.Value)
+    targetRow.Cells(1, ColumnIndex(lo, "StudentID")).Value = Trim$(frm.txtStudentID.Value)
+    targetRow.Cells(1, ColumnIndex(lo, "DOB")).Value = ParseDateOrBlank(frm.txtDOB.Value)
+    targetRow.Cells(1, ColumnIndex(lo, "Campus")).Value = Trim$(frm.cboCampus.Value)
+    targetRow.Cells(1, ColumnIndex(lo, "District")).Value = districtName
+    targetRow.Cells(1, ColumnIndex(lo, "LeadEvaluator")).Value = Trim$(frm.cboLeadEvaluator.Value)
+    targetRow.Cells(1, ColumnIndex(lo, "ReferralReceivedDate")).Value = referralDate
+    targetRow.Cells(1, ColumnIndex(lo, "ResponseDueDate")).Value = projectedDates("ResponseDueDate")
+    targetRow.Cells(1, ColumnIndex(lo, "ProjectedConsentDate")).Value = projectedDates("ProjectedConsentDate")
+    targetRow.Cells(1, ColumnIndex(lo, "ActualConsentDate")).Value = actualConsentDate
+    targetRow.Cells(1, ColumnIndex(lo, "ProjectedFIIEDueDate")).Value = projectedDates("ProjectedFIIEDueDate")
+    targetRow.Cells(1, ColumnIndex(lo, "ActualFIIEDate")).Value = actualFIIEDate
+    targetRow.Cells(1, ColumnIndex(lo, "ProjectedARDDueDate")).Value = projectedDates("ProjectedARDDueDate")
+    targetRow.Cells(1, ColumnIndex(lo, "ActualARDDate")).Value = actualARDDate
+    targetRow.Cells(1, ColumnIndex(lo, "ReevalDueDate")).Value = reevalDueDate
+    targetRow.Cells(1, ColumnIndex(lo, "ServiceNotes")).Value = Trim$(frm.txtServiceNotes.Value)
+    targetRow.Cells(1, ColumnIndex(lo, "ManualPrimaryDeadline")).Value = manualPrimaryDeadline
+    targetRow.Cells(1, ColumnIndex(lo, "ManualOverrideReason")).Value = Trim$(frm.txtOverrideReason.Value)
+    targetRow.Cells(1, ColumnIndex(lo, "Status")).Value = DetermineStatus(actualConsentDate, actualARDDate)
+    targetRow.Cells(1, ColumnIndex(lo, "PrimaryDeadline")).Value = DeterminePrimaryDeadline(caseType, projectedDates("ResponseDueDate"), projectedDates("ProjectedFIIEDueDate"), projectedDates("ProjectedARDDueDate"), actualConsentDate, actualFIIEDate, actualARDDate, reevalDueDate, manualPrimaryDeadline)
+    targetRow.Cells(1, ColumnIndex(lo, "UpdatedAt")).Value = Now
+
+    PersistServices targetRow, lo, frm
+    ReplaceCaseDocuments caseID, frm.txtDocumentLinks.Value
+
+    RefreshDashboard
+    UpdateCaseFromForm = True
+    MsgBox "Case updated successfully.", vbInformation
+End Function
+
+Public Function FindCaseRow(ByVal caseID As String) As Range
+    Dim lo As ListObject
+    Dim dataRow As ListRow
+
+    Set lo = GetTable(TABLE_CASES)
+    For Each dataRow In lo.ListRows
+        If StrComp(CStr(dataRow.Range.Cells(1, ColumnIndex(lo, "CaseID")).Value), caseID, vbTextCompare) = 0 Then
+            Set FindCaseRow = dataRow.Range
+            Exit Function
+        End If
+    Next dataRow
+
+    Err.Raise vbObjectError + 2000, "FindCaseRow", "Case not found: " & caseID
+End Function
+
+Public Sub LoadCaseIntoForm(ByVal caseID As String, ByVal frm As Object)
+    Dim lo As ListObject
+    Dim rowRange As Range
+    Dim mapping As Variant
+
+    Set lo = GetTable(TABLE_CASES)
+    Set rowRange = FindCaseRow(caseID)
+
+    frm.lblCaseID.Caption = CStr(rowRange.Cells(1, ColumnIndex(lo, "CaseID")).Value)
+    frm.txtStudentName.Value = CStr(rowRange.Cells(1, ColumnIndex(lo, "StudentName")).Value)
+    frm.txtStudentID.Value = CStr(rowRange.Cells(1, ColumnIndex(lo, "StudentID")).Value)
+    frm.txtDOB.Value = FormatDateOrBlank(rowRange.Cells(1, ColumnIndex(lo, "DOB")).Value)
+    frm.cboCampus.Value = CStr(rowRange.Cells(1, ColumnIndex(lo, "Campus")).Value)
+    frm.cboDistrict.Value = CStr(rowRange.Cells(1, ColumnIndex(lo, "District")).Value)
+    PopulateEvaluatorsForDistrict frm, frm.cboDistrict.Value
+    frm.cboLeadEvaluator.Value = CStr(rowRange.Cells(1, ColumnIndex(lo, "LeadEvaluator")).Value)
+    frm.txtReferralReceivedDate.Value = FormatDateOrBlank(rowRange.Cells(1, ColumnIndex(lo, "ReferralReceivedDate")).Value)
+    frm.txtReevalDueDate.Value = FormatDateOrBlank(rowRange.Cells(1, ColumnIndex(lo, "ReevalDueDate")).Value)
+    frm.txtActualConsentDate.Value = FormatDateOrBlank(rowRange.Cells(1, ColumnIndex(lo, "ActualConsentDate")).Value)
+    frm.txtActualFIIEDate.Value = FormatDateOrBlank(rowRange.Cells(1, ColumnIndex(lo, "ActualFIIEDate")).Value)
+    frm.txtActualARDDate.Value = FormatDateOrBlank(rowRange.Cells(1, ColumnIndex(lo, "ActualARDDate")).Value)
+    frm.txtOverridePrimaryDeadline.Value = FormatDateOrBlank(rowRange.Cells(1, ColumnIndex(lo, "ManualPrimaryDeadline")).Value)
+    frm.txtOverrideReason.Value = CStr(rowRange.Cells(1, ColumnIndex(lo, "ManualOverrideReason")).Value)
+    frm.txtServiceNotes.Value = CStr(rowRange.Cells(1, ColumnIndex(lo, "ServiceNotes")).Value)
+    frm.txtDocumentLinks.Value = GetCaseDocumentText(caseID)
+
+    For Each mapping In ServiceMap()
+        frm.Controls(mapping(1)).Value = CBool(Val(rowRange.Cells(1, ColumnIndex(lo, mapping(0))).Value))
+    Next mapping
+
+    UpdateProjectedLabels frm, CStr(rowRange.Cells(1, ColumnIndex(lo, "CaseType")).Value)
+End Sub
+
+Public Sub PopulateCaseSearchResults(ByVal lst As Object, ByVal studentID As String, Optional ByVal caseType As String = vbNullString)
+    Dim lo As ListObject
+    Dim dataRow As ListRow
+
+    lst.Clear
+    Set lo = GetTable(TABLE_CASES)
+
+    For Each dataRow In lo.ListRows
+        If Len(Trim$(studentID)) = 0 Or StrComp(CStr(dataRow.Range.Cells(1, ColumnIndex(lo, "StudentID")).Value), studentID, vbTextCompare) = 0 Then
+            If Len(caseType) = 0 Or StrComp(CStr(dataRow.Range.Cells(1, ColumnIndex(lo, "CaseType")).Value), caseType, vbTextCompare) = 0 Then
+                lst.AddItem CStr(dataRow.Range.Cells(1, ColumnIndex(lo, "CaseID")).Value)
+                lst.List(lst.ListCount - 1, 1) = CStr(dataRow.Range.Cells(1, ColumnIndex(lo, "CaseType")).Value)
+                lst.List(lst.ListCount - 1, 2) = CStr(dataRow.Range.Cells(1, ColumnIndex(lo, "Status")).Value)
+                lst.List(lst.ListCount - 1, 3) = CStr(dataRow.Range.Cells(1, ColumnIndex(lo, "StudentName")).Value)
+            End If
+        End If
+    Next dataRow
+End Sub
+
+Private Sub PersistServices(ByVal rowRange As Range, ByVal lo As ListObject, ByVal frm As Object)
+    Dim mapping As Variant
+    For Each mapping In ServiceMap()
+        rowRange.Cells(1, ColumnIndex(lo, mapping(0))).Value = IIf(frm.Controls(mapping(1)).Value, 1, 0)
+    Next mapping
+End Sub
+
+Public Sub ReplaceCaseDocuments(ByVal caseID As String, ByVal rawDocumentText As String)
+    Dim lo As ListObject
+    Dim i As Long
+    Dim documentLines() As String
+    Dim lineText As String
+    Dim parts() As String
+    Dim rowRange As Range
+    Dim labelText As String
+    Dim pathText As String
+    Dim docCounter As Long
+
+    Set lo = GetTable(TABLE_CASE_DOCUMENTS)
+
+    For i = lo.ListRows.Count To 1 Step -1
+        If StrComp(CStr(lo.ListRows(i).Range.Cells(1, ColumnIndex(lo, "CaseID")).Value), caseID, vbTextCompare) = 0 Then
+            lo.ListRows(i).Delete
+        End If
+    Next i
+
+    rawDocumentText = Replace(rawDocumentText, vbCrLf, vbLf)
+    rawDocumentText = Replace(rawDocumentText, vbCr, vbLf)
+    documentLines = Split(rawDocumentText, vbLf)
+    docCounter = 0
+
+    For i = LBound(documentLines) To UBound(documentLines)
+        lineText = Trim$(documentLines(i))
+        If Len(lineText) > 0 Then
+            docCounter = docCounter + 1
+            parts = Split(lineText, "|")
+            If UBound(parts) >= 1 Then
+                labelText = Trim$(parts(0))
+                pathText = Trim$(Mid$(lineText, InStr(1, lineText, "|") + 1))
+            Else
+                labelText = "Document " & docCounter
+                pathText = lineText
+            End If
+
+            Set rowRange = lo.ListRows.Add.Range
+            rowRange.Cells(1, ColumnIndex(lo, "DocumentID")).Value = caseID & "-DOC" & Format$(docCounter, "00")
+            rowRange.Cells(1, ColumnIndex(lo, "CaseID")).Value = caseID
+            rowRange.Cells(1, ColumnIndex(lo, "DocumentLabel")).Value = labelText
+            rowRange.Cells(1, ColumnIndex(lo, "DocumentPath")).Value = pathText
+            rowRange.Cells(1, ColumnIndex(lo, "AddedAt")).Value = Now
+        End If
+    Next i
+End Sub
+
+Public Function GetCaseDocumentText(ByVal caseID As String) As String
+    Dim lo As ListObject
+    Dim dataRow As ListRow
+    Dim lines As String
+
+    Set lo = GetTable(TABLE_CASE_DOCUMENTS)
+
+    For Each dataRow In lo.ListRows
+        If StrComp(CStr(dataRow.Range.Cells(1, ColumnIndex(lo, "CaseID")).Value), caseID, vbTextCompare) = 0 Then
+            lines = lines & CStr(dataRow.Range.Cells(1, ColumnIndex(lo, "DocumentLabel")).Value) & "|" & _
+                    CStr(dataRow.Range.Cells(1, ColumnIndex(lo, "DocumentPath")).Value) & vbCrLf
+        End If
+    Next dataRow
+
+    If Len(lines) > 0 Then lines = Left$(lines, Len(lines) - 2)
+    GetCaseDocumentText = lines
+End Function
+
+Public Function ParseDateOrBlank(ByVal inputValue As Variant) As Variant
+    If IsDate(inputValue) Then
+        ParseDateOrBlank = CDate(inputValue)
+    Else
+        ParseDateOrBlank = vbNullString
+    End If
+End Function
+
+Public Sub UpdateProjectedLabels(ByVal frm As Object, ByVal caseType As String)
+    Dim projectedDates As Object
+    Dim districtName As String
+
+    districtName = Trim$(frm.cboDistrict.Value)
+    If Len(districtName) = 0 Then Exit Sub
+
+    Set projectedDates = BuildProjectedDates(caseType, districtName, ParseDateOrBlank(frm.txtReferralReceivedDate.Value), _
+                                             ParseDateOrBlank(frm.txtActualConsentDate.Value), _
+                                             ParseDateOrBlank(frm.txtActualFIIEDate.Value), _
+                                             ParseDateOrBlank(frm.txtReevalDueDate.Value))
+
+    frm.lblProjectedResponseDue.Caption = "Response Due: " & FormatDateOrBlank(projectedDates("ResponseDueDate"))
+    frm.lblProjectedConsent.Caption = "Projected Consent: " & FormatDateOrBlank(projectedDates("ProjectedConsentDate"))
+    frm.lblProjectedFIIEDue.Caption = "Projected FIIE Due: " & FormatDateOrBlank(projectedDates("ProjectedFIIEDueDate"))
+    frm.lblProjectedARDDue.Caption = "Projected ARD Due: " & FormatDateOrBlank(projectedDates("ProjectedARDDueDate"))
+End Sub
+```
+
+Module: modSpedDashboard
+------------------------
+```vb
+Option Explicit
+
+Public Sub RefreshDashboard()
+    Dim ws As Worksheet
+    Dim lo As ListObject
+    Dim dataRow As ListRow
+    Dim rowNumber As Long
+    Dim nextDeadline As Variant
+    Dim statusValue As String
+    Dim headers As Variant
+    Dim i As Long
+
+    Set ws = EnsureSheet(SHEET_DASHBOARD)
+    Set lo = GetTable(TABLE_CASES)
+
+    ws.Cells.Clear
+    ws.Range("A1").Value = "SPED Status Reports Dashboard"
+    ws.Range("A1").Font.Bold = True
+    ws.Range("A1").Font.Size = 16
+    ws.Range("A2").Value = "Use Excel's built-in filters on row 4 to filter by district, campus, evaluator, case type, or status."
+
+    headers = Array("Case ID", "Case Type", "Student Name", "Student ID", "Campus", "District", _
+                    "Lead Evaluator", "Status", "Primary Deadline", "Response Due", _
+                    "Projected FIIE Due", "Projected ARD Due", "Re-eval Due", "Updated At")
+    For i = LBound(headers) To UBound(headers)
+        ws.Cells(4, i + 1).Value = headers(i)
+    Next i
+    ws.Rows(4).Font.Bold = True
+
+    rowNumber = 5
+    For Each dataRow In lo.ListRows
+        nextDeadline = dataRow.Range.Cells(1, ColumnIndex(lo, "PrimaryDeadline")).Value
+        statusValue = CStr(dataRow.Range.Cells(1, ColumnIndex(lo, "Status")).Value)
+
+        ws.Cells(rowNumber, 1).Value = dataRow.Range.Cells(1, ColumnIndex(lo, "CaseID")).Value
+        ws.Cells(rowNumber, 2).Value = dataRow.Range.Cells(1, ColumnIndex(lo, "CaseType")).Value
+        ws.Cells(rowNumber, 3).Value = dataRow.Range.Cells(1, ColumnIndex(lo, "StudentName")).Value
+        ws.Cells(rowNumber, 4).Value = dataRow.Range.Cells(1, ColumnIndex(lo, "StudentID")).Value
+        ws.Cells(rowNumber, 5).Value = dataRow.Range.Cells(1, ColumnIndex(lo, "Campus")).Value
+        ws.Cells(rowNumber, 6).Value = dataRow.Range.Cells(1, ColumnIndex(lo, "District")).Value
+        ws.Cells(rowNumber, 7).Value = dataRow.Range.Cells(1, ColumnIndex(lo, "LeadEvaluator")).Value
+        ws.Cells(rowNumber, 8).Value = statusValue
+        ws.Cells(rowNumber, 9).Value = nextDeadline
+        ws.Cells(rowNumber, 10).Value = dataRow.Range.Cells(1, ColumnIndex(lo, "ResponseDueDate")).Value
+        ws.Cells(rowNumber, 11).Value = dataRow.Range.Cells(1, ColumnIndex(lo, "ProjectedFIIEDueDate")).Value
+        ws.Cells(rowNumber, 12).Value = dataRow.Range.Cells(1, ColumnIndex(lo, "ProjectedARDDueDate")).Value
+        ws.Cells(rowNumber, 13).Value = dataRow.Range.Cells(1, ColumnIndex(lo, "ReevalDueDate")).Value
+        ws.Cells(rowNumber, 14).Value = dataRow.Range.Cells(1, ColumnIndex(lo, "UpdatedAt")).Value
+
+        ApplyDashboardRowColor ws.Rows(rowNumber), statusValue, nextDeadline
+        rowNumber = rowNumber + 1
+    Next dataRow
+
+    If rowNumber > 5 Then
+        ws.Range("A4:N" & (rowNumber - 1)).AutoFilter
+    Else
+        ws.Range("A4:N5").AutoFilter
+    End If
+
+    ws.Columns("A:N").AutoFit
+    ws.Activate
+End Sub
+
+Private Sub ApplyDashboardRowColor(ByVal targetRow As Range, ByVal statusValue As String, ByVal deadlineValue As Variant)
+    targetRow.Interior.Pattern = xlSolid
+
+    If StrComp(statusValue, STATUS_COMPLETE, vbTextCompare) = 0 Then
+        targetRow.Interior.Color = RGB(198, 239, 206)
+    ElseIf IsDate(deadlineValue) Then
+        If CDate(deadlineValue) < Date Then
+            targetRow.Interior.Color = RGB(255, 199, 206)
+        ElseIf DateDiff("d", Date, CDate(deadlineValue)) <= 7 Then
+            targetRow.Interior.Color = RGB(255, 235, 156)
+        Else
+            targetRow.Interior.ColorIndex = xlColorIndexNone
+        End If
+    Else
+        targetRow.Interior.ColorIndex = xlColorIndexNone
+    End If
+End Sub
+```
+
+Module: modSpedSecurity
+-----------------------
+```vb
+Option Explicit
+
+Public Sub ProtectWorkbookApp()
+    Dim ws As Worksheet
+
+    On Error Resume Next
+    ThisWorkbook.Unprotect Password:=APP_PASSWORD
+    On Error GoTo 0
+
+    For Each ws In ThisWorkbook.Worksheets
+        ws.Unprotect Password:=APP_PASSWORD
+        ws.Protect Password:=APP_PASSWORD, UserInterfaceOnly:=True
+
+        Select Case ws.Name
+            Case SHEET_DASHBOARD
+                ws.Visible = xlSheetVisible
+            Case Else
+                ws.Visible = xlSheetVeryHidden
+        End Select
+    Next ws
+
+    ThisWorkbook.Protect Password:=APP_PASSWORD, Structure:=True
+End Sub
+
+Public Function RequestAdminAccess() As Boolean
+    Dim userCode As String
+    userCode = InputBox("Enter the admin access code.", "SPED Status Reports")
+    RequestAdminAccess = (StrComp(userCode, ADMIN_ACCESS_CODE, vbBinaryCompare) = 0)
+
+    If Not RequestAdminAccess Then
+        MsgBox "Admin access denied.", vbExclamation
+    End If
+End Function
+
+Public Sub ShowBackendSheets()
+    Dim ws As Worksheet
+    On Error Resume Next
+    ThisWorkbook.Unprotect Password:=APP_PASSWORD
+    On Error GoTo 0
+    For Each ws In ThisWorkbook.Worksheets
+        ws.Visible = xlSheetVisible
+    Next ws
+    ThisWorkbook.Protect Password:=APP_PASSWORD, Structure:=True
+End Sub
+
+Public Sub HideBackendSheets()
+    Dim ws As Worksheet
+    On Error Resume Next
+    ThisWorkbook.Unprotect Password:=APP_PASSWORD
+    On Error GoTo 0
+    For Each ws In ThisWorkbook.Worksheets
+        If StrComp(ws.Name, SHEET_DASHBOARD, vbTextCompare) = 0 Then
+            ws.Visible = xlSheetVisible
+        Else
+            ws.Visible = xlSheetVeryHidden
+        End If
+    Next ws
+    ThisWorkbook.Protect Password:=APP_PASSWORD, Structure:=True
+End Sub
+```
+
+Module: modSpedLauncher
+-----------------------
+```vb
+Option Explicit
+
+Public Sub LaunchSpedStatusReports()
+    frmLauncher.Show
+End Sub
+```
+
+UserForm: frmLauncher
+---------------------
+```vb
+Option Explicit
+
+Private Sub UserForm_Initialize()
+    lblTitle.Caption = "SPED Status Reports"
+
+    cboCaseType.Clear
+    cboCaseType.AddItem CASE_TYPE_INITIAL
+    cboCaseType.AddItem CASE_TYPE_REEVALUATION
+    cboCaseType.ListIndex = 0
+End Sub
+
+Private Sub cmdNewCase_Click()
+    frmCaseIntake.ConfigureForCaseType cboCaseType.Value
+    frmCaseIntake.Show
+End Sub
+
+Private Sub cmdUpdateCase_Click()
+    frmCaseUpdate.ConfigureForCaseType cboCaseType.Value
+    frmCaseUpdate.Show
+End Sub
+
+Private Sub cmdAdmin_Click()
+    If RequestAdminAccess() Then frmAdmin.Show
+End Sub
+
+Private Sub cmdClose_Click()
+    Unload Me
+End Sub
+```
+
+UserForm: frmCaseIntake
+-----------------------
+```vb
+Option Explicit
+
+Public Sub ConfigureForCaseType(ByVal caseType As String)
+    Me.Tag = caseType
+    Me.Caption = caseType & " Intake"
+    lblFormTitle.Caption = caseType & " Intake"
+
+    PopulateReferenceLists Me
+
+    txtStudentName.Value = vbNullString
+    txtStudentID.Value = vbNullString
+    txtDOB.Value = vbNullString
+    cboCampus.Value = vbNullString
+    cboDistrict.Value = vbNullString
+    cboLeadEvaluator.Value = vbNullString
+    txtReferralReceivedDate.Value = vbNullString
+    txtReevalDueDate.Value = vbNullString
+    txtActualConsentDate.Value = vbNullString
+    txtActualFIIEDate.Value = vbNullString
+    txtActualARDDate.Value = vbNullString
+    txtServiceNotes.Value = vbNullString
+    txtDocumentLinks.Value = vbNullString
+
+    chkSchoolPsychologist.Value = False
+    chkOccupationalTherapist.Value = False
+    chkPhysicalTherapist.Value = False
+    chkCounselingEvaluation.Value = False
+    chkFBA.Value = False
+    chkSpeechPathologist.Value = False
+    chkVI.Value = False
+    chkDHH.Value = False
+    chkLanguageDominanceBilingual.Value = False
+
+    ToggleCaseTypeFields
+    lblProjectedResponseDue.Caption = "Response Due:"
+    lblProjectedConsent.Caption = "Projected Consent:"
+    lblProjectedFIIEDue.Caption = "Projected FIIE Due:"
+    lblProjectedARDDue.Caption = "Projected ARD Due:"
+    UpdateProjectedLabels Me, Me.Tag
+End Sub
+
+Private Sub ToggleCaseTypeFields()
+    Dim isInitial As Boolean
+    isInitial = (StrComp(Me.Tag, CASE_TYPE_INITIAL, vbTextCompare) = 0)
+
+    txtReferralReceivedDate.Enabled = isInitial
+    txtActualConsentDate.Enabled = isInitial
+    lblProjectedResponseDue.Visible = isInitial
+    lblProjectedConsent.Visible = isInitial
+
+    txtReevalDueDate.Enabled = Not isInitial
+    If isInitial Then txtReevalDueDate.Value = vbNullString
+End Sub
+
+Private Sub cboCampus_Change()
+    If Len(Trim$(cboCampus.Value)) > 0 Then
+        cboDistrict.Value = ResolveDistrictFromCampus(cboCampus.Value)
+        PopulateEvaluatorsForDistrict Me, cboDistrict.Value
+        UpdateProjectedLabels Me, Me.Tag
+    End If
+End Sub
+
+Private Sub cboDistrict_Change()
+    If Len(Trim$(cboDistrict.Value)) > 0 Then
+        PopulateEvaluatorsForDistrict Me, cboDistrict.Value
+        UpdateProjectedLabels Me, Me.Tag
+    End If
+End Sub
+
+Private Sub txtReferralReceivedDate_Change()
+    UpdateProjectedLabels Me, Me.Tag
+End Sub
+
+Private Sub txtReevalDueDate_Change()
+    UpdateProjectedLabels Me, Me.Tag
+End Sub
+
+Private Sub txtActualConsentDate_Change()
+    UpdateProjectedLabels Me, Me.Tag
+End Sub
+
+Private Sub txtActualFIIEDate_Change()
+    UpdateProjectedLabels Me, Me.Tag
+End Sub
+
+Private Sub cmdSave_Click()
+    If SaveCaseFromIntakeForm(Me) Then Unload Me
+End Sub
+
+Private Sub cmdCancel_Click()
+    Unload Me
+End Sub
+```
+
+UserForm: frmCaseUpdate
+-----------------------
+```vb
+Option Explicit
+
+Public Sub ConfigureForCaseType(ByVal caseType As String)
+    Me.Tag = caseType
+    Me.Caption = caseType & " Update"
+    lblFormTitle.Caption = caseType & " Milestone Update"
+    lblCaseID.Caption = vbNullString
+
+    PopulateReferenceLists Me
+    lstCases.ColumnCount = 4
+    lstCases.Clear
+    txtSearchStudentID.Value = vbNullString
+    txtStudentName.Value = vbNullString
+    txtStudentID.Value = vbNullString
+    txtDOB.Value = vbNullString
+    cboCampus.Value = vbNullString
+    cboDistrict.Value = vbNullString
+    cboLeadEvaluator.Value = vbNullString
+    txtReferralReceivedDate.Value = vbNullString
+    txtReevalDueDate.Value = vbNullString
+    txtActualConsentDate.Value = vbNullString
+    txtActualFIIEDate.Value = vbNullString
+    txtActualARDDate.Value = vbNullString
+    txtOverridePrimaryDeadline.Value = vbNullString
+    txtOverrideReason.Value = vbNullString
+    txtServiceNotes.Value = vbNullString
+    txtDocumentLinks.Value = vbNullString
+    chkSchoolPsychologist.Value = False
+    chkOccupationalTherapist.Value = False
+    chkPhysicalTherapist.Value = False
+    chkCounselingEvaluation.Value = False
+    chkFBA.Value = False
+    chkSpeechPathologist.Value = False
+    chkVI.Value = False
+    chkDHH.Value = False
+    chkLanguageDominanceBilingual.Value = False
+    lblProjectedResponseDue.Caption = "Response Due:"
+    lblProjectedConsent.Caption = "Projected Consent:"
+    lblProjectedFIIEDue.Caption = "Projected FIIE Due:"
+    lblProjectedARDDue.Caption = "Projected ARD Due:"
+End Sub
+
+Private Sub cmdSearch_Click()
+    PopulateCaseSearchResults lstCases, txtSearchStudentID.Value, Me.Tag
+End Sub
+
+Private Sub lstCases_Click()
+    If lstCases.ListIndex >= 0 Then
+        LoadCaseIntoForm lstCases.List(lstCases.ListIndex, 0), Me
+    End If
+End Sub
+
+Private Sub cboCampus_Change()
+    If Len(Trim$(cboCampus.Value)) > 0 Then
+        cboDistrict.Value = ResolveDistrictFromCampus(cboCampus.Value)
+        PopulateEvaluatorsForDistrict Me, cboDistrict.Value
+        UpdateProjectedLabels Me, Me.Tag
+    End If
+End Sub
+
+Private Sub cboDistrict_Change()
+    If Len(Trim$(cboDistrict.Value)) > 0 Then
+        PopulateEvaluatorsForDistrict Me, cboDistrict.Value
+        UpdateProjectedLabels Me, Me.Tag
+    End If
+End Sub
+
+Private Sub txtReferralReceivedDate_Change()
+    UpdateProjectedLabels Me, Me.Tag
+End Sub
+
+Private Sub txtReevalDueDate_Change()
+    UpdateProjectedLabels Me, Me.Tag
+End Sub
+
+Private Sub txtActualConsentDate_Change()
+    UpdateProjectedLabels Me, Me.Tag
+End Sub
+
+Private Sub txtActualFIIEDate_Change()
+    UpdateProjectedLabels Me, Me.Tag
+End Sub
+
+Private Sub cmdApplyOverride_Click()
+    If Not RequestAdminAccess() Then Exit Sub
+    If Len(Trim$(txtOverridePrimaryDeadline.Value)) = 0 Or Len(Trim$(txtOverrideReason.Value)) = 0 Then
+        MsgBox "Enter both an override due date and a reason.", vbExclamation
+        Exit Sub
+    End If
+    MsgBox "Override details recorded. Click Save to persist them.", vbInformation
+End Sub
+
+Private Sub cmdSave_Click()
+    If UpdateCaseFromForm(Me) Then Unload Me
+End Sub
+
+Private Sub cmdCancel_Click()
+    Unload Me
+End Sub
+```
+
+UserForm: frmAdmin
+------------------
+```vb
+Option Explicit
+
+Private Sub UserForm_Initialize()
+    lblTitle.Caption = "SPED Status Reports Admin"
+End Sub
+
+Private Sub cmdOpenDistricts_Click()
+    ShowBackendSheets
+    ThisWorkbook.Worksheets(SHEET_DISTRICTS).Visible = xlSheetVisible
+    ThisWorkbook.Worksheets(SHEET_DISTRICTS).Activate
+End Sub
+
+Private Sub cmdOpenCampuses_Click()
+    ShowBackendSheets
+    ThisWorkbook.Worksheets(SHEET_CAMPUSES).Visible = xlSheetVisible
+    ThisWorkbook.Worksheets(SHEET_CAMPUSES).Activate
+End Sub
+
+Private Sub cmdOpenEvaluators_Click()
+    ShowBackendSheets
+    ThisWorkbook.Worksheets(SHEET_EVALUATORS).Visible = xlSheetVisible
+    ThisWorkbook.Worksheets(SHEET_EVALUATORS).Activate
+End Sub
+
+Private Sub cmdOpenCalendars_Click()
+    ShowBackendSheets
+    ThisWorkbook.Worksheets(SHEET_CALENDARS).Visible = xlSheetVisible
+    ThisWorkbook.Worksheets(SHEET_CALENDARS).Activate
+End Sub
+
+Private Sub cmdRevealBackend_Click()
+    ShowBackendSheets
+End Sub
+
+Private Sub cmdHideBackend_Click()
+    HideBackendSheets
+End Sub
+
+Private Sub cmdRefreshDashboard_Click()
+    RefreshDashboard
+End Sub
+
+Private Sub cmdClose_Click()
+    Unload Me
+End Sub
+```
+
+Recommended Field Behavior
+--------------------------
+- Initial case
+  - Enter Referral Received Date at intake.
+  - Response Due Date auto-calculates to 15 instructional days using the district calendar.
+  - Projected Consent Date mirrors Response Due Date until actual consent is entered.
+  - Projected FIIE Due Date recalculates from the consent anchor.
+  - Projected ARD Due Date recalculates from the FIIE completion anchor.
+- Re-evaluation case
+  - Enter the Re-evaluation Due Date at intake.
+  - The dashboard uses that due date as the primary deadline until the FIIE milestone is entered.
+- Milestone updates
+  - `Referral Received` until Actual Consent Date exists
+  - `In Progress` once Actual Consent Date exists
+  - `Complete` once Actual ARD Date exists
+- Documents
+  - Store one or more file paths or network links as text references
+  - No files are embedded in the workbook
+
+Production Checklist
+--------------------
+1. Replace APP_PASSWORD and ADMIN_ACCESS_CODE.
+2. Replace sample district, campus, and evaluator data.
+3. Populate each district's closure / non-instructional dates on DistrictCalendars.
+4. Validate the legal day-count rules with district counsel before production use.
+5. Save the workbook as `.xlsm`.
+6. Back up the workbook before structural changes.
+
+Phase 2 Backlog
+---------------
+- Gmail notification automation
+- Google Calendar event syncing
+- Stronger authentication / identity controls
+- Audit history table if change tracking becomes required
