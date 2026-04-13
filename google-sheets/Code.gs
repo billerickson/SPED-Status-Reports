@@ -10,6 +10,8 @@ const SHEETS = {
   campuses: 'Campuses',
   evaluators: 'Evaluators',
   calendars: 'DistrictCalendars',
+  settings: 'Settings',
+  audit: 'AuditLog',
   dashboard: 'Dashboard',
 };
 
@@ -61,6 +63,7 @@ const CASE_HEADERS = [
   'Service_DHH',
   'Service_LanguageDominanceBilingual',
   'ServiceNotes',
+  'VarianceExplanation',
   'ManualPrimaryDeadline',
   'ManualOverrideReason',
   'PrimaryDeadline',
@@ -73,6 +76,8 @@ const DISTRICT_HEADERS = ['District', 'ResponseSchoolDays', 'FIIESchoolDays', 'A
 const CAMPUS_HEADERS = ['Campus', 'District', 'Active'];
 const EVALUATOR_HEADERS = ['LeadEvaluator', 'Email', 'Active'];
 const CALENDAR_BASE_HEADERS = ['Date', 'Weekday'];
+const SETTINGS_HEADERS = ['SettingKey', 'SettingValue', 'Description'];
+const AUDIT_HEADERS = ['AuditID', 'CaseID', 'Action', 'FieldName', 'OldValue', 'NewValue', 'ChangedAt'];
 
 const SERVICE_FIELDS = [
   'Service_SchoolPsychologist',
@@ -111,6 +116,8 @@ function onOpen() {
     .addItem('Open Campuses (Admin)', 'openCampusesSheet')
     .addItem('Open Evaluators (Admin)', 'openEvaluatorsSheet')
     .addItem('Open Calendars (Admin)', 'openCalendarsSheet')
+    .addItem('Open Settings (Admin)', 'openSettingsSheet')
+    .addItem('Open Audit Log (Admin)', 'openAuditSheet')
     .addItem('Sync Calendar Grid', 'syncDistrictCalendarGrid')
     .addItem('Reapply Admin Sheet Protection', 'reapplyAdminSheetProtection')
     .addToUi();
@@ -262,6 +269,8 @@ function saveNewCase(payload) {
 
     appendRow_(SHEETS.cases, row, CASE_HEADERS);
     replaceCaseDocuments_(caseId, payload.documentLinks || '');
+    logCaseCreation_(row);
+    logDocumentsUpdate_(caseId, '', payload.documentLinks || '');
     refreshDashboard_(false);
 
     return {
@@ -310,6 +319,7 @@ function updateExistingCase(payload) {
       ARDScheduledDate: parseDate_(payload.ardScheduledDate),
       ActualARDDate: parseDate_(payload.actualARDDate),
       ServiceNotes: payload.serviceNotes || '',
+      VarianceExplanation: payload.varianceExplanation || '',
       ManualPrimaryDeadline: parseDate_(payload.overridePrimaryDeadline),
       ManualOverrideReason: payload.overrideReason || '',
       UpdatedAt: new Date(),
@@ -354,7 +364,10 @@ function updateExistingCase(payload) {
     );
 
     writeCaseRowByIndex_(existingRecord.rowIndex, merged);
+    const previousDocumentsText = getCaseDocumentsText_(payload.caseId);
     replaceCaseDocuments_(payload.caseId, payload.documentLinks || '');
+    logCaseUpdate_(existing, merged);
+    logDocumentsUpdate_(payload.caseId, previousDocumentsText, payload.documentLinks || '');
     refreshDashboard_(false);
 
     return {
@@ -392,6 +405,14 @@ function openEvaluatorsSheet(adminCode) {
 
 function openCalendarsSheet(adminCode) {
   openAdminSheet_(SHEETS.calendars, adminCode);
+}
+
+function openSettingsSheet(adminCode) {
+  openAdminSheet_(SHEETS.settings, adminCode);
+}
+
+function openAuditSheet(adminCode) {
+  openAdminSheet_(SHEETS.audit, adminCode);
 }
 
 function showAllSheets(adminCode) {
@@ -526,7 +547,7 @@ function buildDashboardRecord_(row, documents) {
       row.Status,
       ...SERVICE_FIELDS.map((field) => (Number(row[field]) === 1 ? 'Yes' : 'No')),
       documents.map((item) => `${item.DocumentLabel}|${item.DocumentPath}`).join('\n'),
-      row.ServiceNotes || '',
+      buildCombinedNotes_(row.ServiceNotes, row.VarianceExplanation),
     ],
     status: row.Status,
     responseDueDate: row.ResponseDueDate,
@@ -538,6 +559,17 @@ function buildDashboardRecord_(row, documents) {
     ardDueDate: row.ProjectedARDDueDate,
     ardCompletedDate: row.ActualARDDate,
   };
+}
+
+function buildCombinedNotes_(serviceNotes, varianceExplanation) {
+  const parts = [];
+  if (String(serviceNotes || '').trim()) {
+    parts.push(`Service Notes: ${String(serviceNotes).trim()}`);
+  }
+  if (String(varianceExplanation || '').trim()) {
+    parts.push(`Variance: ${String(varianceExplanation).trim()}`);
+  }
+  return parts.join('\n');
 }
 
 function getDistrictDashboardSheetName_(districtName) {
@@ -561,6 +593,8 @@ function ensureWorkbookScaffold_(options) {
   ensureSheet_(SHEETS.campuses, CAMPUS_HEADERS);
   ensureSheet_(SHEETS.evaluators, EVALUATOR_HEADERS);
   ensureSheet_(SHEETS.calendars, CALENDAR_BASE_HEADERS);
+  ensureSheet_(SHEETS.settings, SETTINGS_HEADERS);
+  ensureSheet_(SHEETS.audit, AUDIT_HEADERS);
   ensureSheet_(SHEETS.dashboard, ['SPED Status Reports Dashboard']);
 
   if (settings.seedReferenceData) {
@@ -697,6 +731,20 @@ function getAdminEditorEmails_() {
   return [...new Set(emails.filter(Boolean))];
 }
 
+function getSettingValue_(settingKey, fallbackValue) {
+  const rows = getTableRows_(SHEETS.settings, SETTINGS_HEADERS);
+  const match = rows.find((row) => String(row.SettingKey).trim() === String(settingKey).trim());
+  if (!match || match.SettingValue === '') {
+    return fallbackValue;
+  }
+  return match.SettingValue;
+}
+
+function getNumericSetting_(settingKey, fallbackValue) {
+  const value = Number(getSettingValue_(settingKey, fallbackValue));
+  return Number.isFinite(value) ? value : fallbackValue;
+}
+
 function syncDistrictCalendarSheet_() {
   const sheet = SpreadsheetApp.getActive().getSheetByName(SHEETS.calendars);
   const districtNames = getActiveColumnValues_(SHEETS.districts, 'District');
@@ -776,6 +824,8 @@ function buildSchoolYearDates_() {
 }
 
 function seedReferenceData_() {
+  seedSettings_();
+
   maybeAppendSeedRow_(SHEETS.districts, DISTRICT_HEADERS, {
     District: 'Sample ISD',
     ResponseSchoolDays: 15,
@@ -795,6 +845,27 @@ function seedReferenceData_() {
     Email: 'sample@example.org',
     Active: 'Yes',
   });
+}
+
+function seedSettings_() {
+  ensureSettingRow_('UpcomingWarningDays', '30', 'How many days before an incomplete deadline should turn pink.');
+  ensureSettingRow_('PinkDeadlineColor', '#f4cccc', 'Color used when a deadline is within the warning window.');
+  ensureSettingRow_('RedDeadlineColor', '#ff9999', 'Color used when a due date is missed.');
+  ensureSettingRow_('UploadsFolderIdOverride', '', 'Optional Google Drive folder ID used for uploaded documents.');
+}
+
+function ensureSettingRow_(settingKey, settingValue, description) {
+  const sheet = SpreadsheetApp.getActive().getSheetByName(SHEETS.settings);
+  const rows = getTableRows_(SHEETS.settings, SETTINGS_HEADERS);
+  if (rows.some((row) => String(row.SettingKey).trim() === String(settingKey).trim())) {
+    return;
+  }
+
+  appendRow_(SHEETS.settings, {
+    SettingKey: settingKey,
+    SettingValue: settingValue,
+    Description: description,
+  }, SETTINGS_HEADERS);
 }
 
 function maybeAppendSeedRow_(sheetName, headers, objectRow) {
@@ -895,6 +966,7 @@ function buildStoredCaseRow_(caseId, payload, timeline, createdAt, updatedAt) {
     ActualARDDate: actualArdDate,
     ReevalDueDate: reevalDueDate,
     ServiceNotes: payload.serviceNotes || '',
+    VarianceExplanation: payload.varianceExplanation || '',
     ManualPrimaryDeadline: manualPrimaryDeadline,
     ManualOverrideReason: payload.overrideReason || '',
     PrimaryDeadline: determinePrimaryDeadline_(
@@ -940,6 +1012,8 @@ function validatePayload_(payload, requireCaseId) {
     throw new Error('District is required.');
   }
 
+  validateDateOrder_(payload);
+
   if (payload.caseType === CASE_TYPES.initial && !parseDate_(payload.referralReceivedDate)) {
     throw new Error('Referral Received Date is required for Initial cases.');
   }
@@ -959,11 +1033,44 @@ function validatePayload_(payload, requireCaseId) {
 }
 
 function validateVarianceNotes_(payload, timeline) {
-  const notes = String(payload.serviceNotes || '').trim();
+  const notes = String(payload.varianceExplanation || '').trim();
   const lateDates = getLateDateWarnings_(payload, timeline);
 
   if (lateDates.length && !notes) {
     throw new Error(`Notes are required when actual dates are later than due dates: ${lateDates.join(', ')}.`);
+  }
+}
+
+function validateDateOrder_(payload) {
+  const referralReceivedDate = parseDate_(payload.referralReceivedDate);
+  const responseSentDate = parseDate_(payload.responseSentDate);
+  const actualConsentDate = parseDate_(payload.actualConsentDate);
+  const evaluationStartedDate = parseDate_(payload.evaluationStartedDate);
+  const actualFiiEDate = parseDate_(payload.actualFIIEDate);
+  const ardScheduledDate = parseDate_(payload.ardScheduledDate);
+  const actualArdDate = parseDate_(payload.actualARDDate);
+
+  validateDateSequence_('Response Sent Date', responseSentDate, 'Referral Received Date', referralReceivedDate);
+  validateDateSequence_('Consent Date', actualConsentDate, 'Referral Received Date', referralReceivedDate);
+  validateDateSequence_('Consent Date', actualConsentDate, 'Response Sent Date', responseSentDate);
+  validateDateSequence_('Evaluation Started Date', evaluationStartedDate, 'Consent Date', actualConsentDate);
+  validateDateSequence_('Evaluation Date', actualFiiEDate, 'Consent Date', actualConsentDate);
+  validateDateSequence_('Evaluation Date', actualFiiEDate, 'Evaluation Started Date', evaluationStartedDate);
+  validateDateSequence_('ARD Scheduled Date', ardScheduledDate, 'Evaluation Date', actualFiiEDate);
+  validateDateSequence_('ARD Date', actualArdDate, 'Evaluation Date', actualFiiEDate);
+  validateDateSequence_('ARD Date', actualArdDate, 'ARD Scheduled Date', ardScheduledDate);
+
+  if (payload.caseType === CASE_TYPES.initial && !referralReceivedDate) {
+    return;
+  }
+}
+
+function validateDateSequence_(laterLabel, laterDate, earlierLabel, earlierDate) {
+  if (!laterDate || !earlierDate) {
+    return;
+  }
+  if (laterDate.getTime() < earlierDate.getTime()) {
+    throw new Error(`${laterLabel} cannot be earlier than ${earlierLabel}.`);
   }
 }
 
@@ -992,6 +1099,65 @@ function getLateDateWarnings_(payload, timeline) {
   }
 
   return lateDates;
+}
+
+function logCaseCreation_(row) {
+  const auditRows = CASE_HEADERS
+    .filter((header) => header !== 'CreatedAt' && header !== 'UpdatedAt')
+    .map((header) => buildAuditRow_(row.CaseID, 'Create', header, '', row[header]));
+  appendAuditRows_(auditRows);
+}
+
+function logCaseUpdate_(existingRow, updatedRow) {
+  const auditRows = CASE_HEADERS
+    .filter((header) => header !== 'CreatedAt' && header !== 'UpdatedAt')
+    .filter((header) => auditStringify_(existingRow[header]) !== auditStringify_(updatedRow[header]))
+    .map((header) => buildAuditRow_(updatedRow.CaseID, 'Update', header, existingRow[header], updatedRow[header]));
+  appendAuditRows_(auditRows);
+}
+
+function logDocumentsUpdate_(caseId, previousDocuments, nextDocuments) {
+  if (previousDocuments === nextDocuments) {
+    return;
+  }
+  appendAuditRows_([
+    buildAuditRow_(caseId, 'Documents', 'DocumentLinks', previousDocuments, nextDocuments),
+  ]);
+}
+
+function buildAuditRow_(caseId, action, fieldName, oldValue, newValue) {
+  return {
+    AuditID: `AUD-${Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMdd-HHmmss-SSS')}-${Math.floor(Math.random() * 1000)}`,
+    CaseID: caseId,
+    Action: action,
+    FieldName: fieldName,
+    OldValue: auditStringify_(oldValue),
+    NewValue: auditStringify_(newValue),
+    ChangedAt: new Date(),
+  };
+}
+
+function appendAuditRows_(auditRows) {
+  if (!auditRows.length) {
+    return;
+  }
+
+  const sheet = SpreadsheetApp.getActive().getSheetByName(SHEETS.audit);
+  const values = auditRows.map((row) => AUDIT_HEADERS.map((header) => (row[header] === undefined ? '' : row[header])));
+  sheet.getRange(sheet.getLastRow() + 1, 1, values.length, AUDIT_HEADERS.length).setValues(values);
+}
+
+function auditStringify_(value) {
+  if (value === undefined || value === null || value === '') {
+    return '';
+  }
+  if (Object.prototype.toString.call(value) === '[object Date]' && !Number.isNaN(value.getTime())) {
+    return formatDateTime_(value) || formatDate_(value);
+  }
+  if (typeof value === 'string' && (/^\d{4}-\d{2}-\d{2}$/.test(value) || /^\d{1,2}\/\d{1,2}\/\d{4}$/.test(value))) {
+    return formatDate_(value);
+  }
+  return String(value);
 }
 
 function buildProjectedDates_(input) {
@@ -1333,6 +1499,7 @@ function uploadFilesToCase(caseId, files) {
   }
 
   const folder = getCaseUploadFolder_(caseId);
+  const previousDocumentsText = getCaseDocumentsText_(caseId);
   const existingDocuments = getCaseDocuments_(caseId).map((item) => ({
     label: item.DocumentLabel,
     path: item.DocumentPath,
@@ -1354,7 +1521,9 @@ function uploadFilesToCase(caseId, files) {
     });
   });
 
-  replaceCaseDocuments_(caseId, buildCaseDocumentsText_(existingDocuments));
+  const nextDocumentsText = buildCaseDocumentsText_(existingDocuments);
+  replaceCaseDocuments_(caseId, nextDocumentsText);
+  logDocumentsUpdate_(caseId, previousDocumentsText, nextDocumentsText);
   refreshDashboard_(false);
 
   return toHtmlSafeObject_({
@@ -1429,8 +1598,9 @@ function getCaseUploadFolder_(caseId) {
 }
 
 function getUploadsRootFolder_() {
-  if (UPLOADS_FOLDER_ID) {
-    return DriveApp.getFolderById(UPLOADS_FOLDER_ID);
+  const folderId = String(getSettingValue_('UploadsFolderIdOverride', UPLOADS_FOLDER_ID) || '').trim();
+  if (folderId) {
+    return DriveApp.getFolderById(folderId);
   }
 
   const spreadsheetFile = DriveApp.getFileById(SpreadsheetApp.getActive().getId());
@@ -1482,6 +1652,8 @@ function normalizeCaseForUi_(row) {
     PrimaryDeadline: formatDate_(row.PrimaryDeadline),
     CreatedAt: formatDateTime_(row.CreatedAt),
     UpdatedAt: formatDateTime_(row.UpdatedAt),
+    ServiceNotes: row.ServiceNotes || '',
+    VarianceExplanation: row.VarianceExplanation || '',
   });
 
   output.services = {};
@@ -1607,6 +1779,11 @@ function applyDashboardFormatting_(sheet, startRow, records) {
   const headers = getDashboardHeaders_();
   const range = sheet.getRange(startRow, 1, records.length, headers.length);
   const backgrounds = records.map(() => new Array(headers.length).fill('#ffffff'));
+  const dueDateColors = {
+    lateColor: getSettingValue_('RedDeadlineColor', '#ff9999'),
+    warningColor: getSettingValue_('PinkDeadlineColor', '#f4cccc'),
+    warningDays: getNumericSetting_('UpcomingWarningDays', 30),
+  };
   const statusColumnIndex = headers.indexOf('Status');
   const responseDueColumnIndex = headers.indexOf('Response Due Date');
   const consentDateColumnIndex = headers.indexOf('Consent Date');
@@ -1626,16 +1803,16 @@ function applyDashboardFormatting_(sheet, startRow, records) {
 
   records.forEach((record, rowIndex) => {
     backgrounds[rowIndex][statusColumnIndex] = statusColors[record.status] || '#ffffff';
-    applyDueDateColor_(backgrounds[rowIndex], responseDueColumnIndex, record.responseDueDate, record.responseCompletedDate, -1);
-    applyDueDateColor_(backgrounds[rowIndex], consentDateColumnIndex, record.consentDueDate, record.consentCompletedDate, consentDateColumnIndex);
-    applyDueDateColor_(backgrounds[rowIndex], evaluationDueColumnIndex, record.evaluationDueDate, record.evaluationCompletedDate, evaluationDateColumnIndex);
-    applyDueDateColor_(backgrounds[rowIndex], ardDueColumnIndex, record.ardDueDate, record.ardCompletedDate, ardDateColumnIndex);
+    applyDueDateColor_(backgrounds[rowIndex], responseDueColumnIndex, record.responseDueDate, record.responseCompletedDate, -1, dueDateColors);
+    applyDueDateColor_(backgrounds[rowIndex], consentDateColumnIndex, record.consentDueDate, record.consentCompletedDate, consentDateColumnIndex, dueDateColors);
+    applyDueDateColor_(backgrounds[rowIndex], evaluationDueColumnIndex, record.evaluationDueDate, record.evaluationCompletedDate, evaluationDateColumnIndex, dueDateColors);
+    applyDueDateColor_(backgrounds[rowIndex], ardDueColumnIndex, record.ardDueDate, record.ardCompletedDate, ardDateColumnIndex, dueDateColors);
   });
 
   range.setBackgrounds(backgrounds);
 }
 
-function applyDueDateColor_(rowBackgrounds, dueColumnIndex, dueDate, completedDate, completedColumnIndex) {
+function applyDueDateColor_(rowBackgrounds, dueColumnIndex, dueDate, completedDate, completedColumnIndex, colorConfig) {
   if (!dueDate) {
     return;
   }
@@ -1648,7 +1825,7 @@ function applyDueDateColor_(rowBackgrounds, dueColumnIndex, dueDate, completedDa
   if (completedDate) {
     if (isAfterDate_(completedDate, dueDate)) {
       const targetColumnIndex = completedColumnIndex >= 0 ? completedColumnIndex : dueColumnIndex;
-      rowBackgrounds[targetColumnIndex] = '#ff9999';
+      rowBackgrounds[targetColumnIndex] = colorConfig.lateColor;
     }
     return;
   }
@@ -1656,10 +1833,10 @@ function applyDueDateColor_(rowBackgrounds, dueColumnIndex, dueDate, completedDa
   const today = normalizeDateForStorage_(new Date());
   const diffDays = Math.floor((due - today) / 86400000);
   if (diffDays < 0) {
-    rowBackgrounds[dueColumnIndex] = '#ff9999';
+    rowBackgrounds[dueColumnIndex] = colorConfig.lateColor;
     return;
   }
-  if (diffDays <= 30) {
-    rowBackgrounds[dueColumnIndex] = '#f4cccc';
+  if (diffDays <= colorConfig.warningDays) {
+    rowBackgrounds[dueColumnIndex] = colorConfig.warningColor;
   }
 }

@@ -312,8 +312,13 @@
         </div>
 
         <div id="serviceNotesWrap">
-          <label for="serviceNotes">Notes / Variance Explanation</label>
+          <label for="serviceNotes">Service Notes</label>
           <textarea id="serviceNotes"></textarea>
+        </div>
+
+        <div id="varianceNotesWrap">
+          <label for="varianceExplanation">Variance Explanation</label>
+          <textarea id="varianceExplanation" placeholder="Required when an actual date is later than its due date"></textarea>
         </div>
 
         <div>
@@ -372,6 +377,10 @@
         <div class="row">
           <button class="secondary" onclick="runOpenAdminSheet('evaluators')">Open Evaluators</button>
           <button class="secondary" onclick="runOpenAdminSheet('calendars')">Open Calendars</button>
+        </div>
+        <div class="row">
+          <button class="secondary" onclick="runOpenAdminSheet('settings')">Open Settings</button>
+          <button class="secondary" onclick="runOpenAdminSheet('audit')">Open Audit Log</button>
         </div>
       </div>
     </div>
@@ -511,6 +520,7 @@
         document.getElementById('milestoneSection').classList.toggle('hidden', isNewInitial);
         document.getElementById('serviceSection').classList.toggle('hidden', isNewInitial);
         document.getElementById('serviceNotesWrap').classList.toggle('hidden', isNewInitial);
+        document.getElementById('varianceNotesWrap').classList.toggle('hidden', isNewInitial);
         if (shouldPreview) {
           updateTimelinePreview();
         }
@@ -545,6 +555,7 @@
           overrideReason: document.getElementById('overrideReason').value.trim(),
           adminCode: document.getElementById('adminCode').value,
           serviceNotes: document.getElementById('serviceNotes').value,
+          varianceExplanation: document.getElementById('varianceExplanation').value,
           documentLinks: document.getElementById('documentLinks').value,
           services,
         };
@@ -651,6 +662,7 @@
         document.getElementById('overridePrimaryDeadline').value = toInputDate(detail.ManualPrimaryDeadline);
         document.getElementById('overrideReason').value = detail.ManualOverrideReason || '';
         document.getElementById('serviceNotes').value = detail.ServiceNotes || '';
+        document.getElementById('varianceExplanation').value = detail.VarianceExplanation || '';
         document.getElementById('documentLinks').value = detail.documentsText || '';
         renderDocumentList(detail.documents || parseDocumentText(detail.documentsText || ''));
 
@@ -668,7 +680,7 @@
       function saveCase() {
         google.script.run
           .withSuccessHandler((lateDates) => {
-            const currentNotes = document.getElementById('serviceNotes').value.trim();
+            const currentNotes = document.getElementById('varianceExplanation').value.trim();
             if (lateDates.length && !currentNotes) {
               const explanation = window.prompt(
                 `A variance explanation is required before saving because these dates are late: ${lateDates.join(', ')}.\n\nEnter the variance explanation:`
@@ -679,7 +691,7 @@
                 return;
               }
 
-              document.getElementById('serviceNotes').value = explanation.trim();
+              document.getElementById('varianceExplanation').value = explanation.trim();
             }
 
             const payload = collectPayload();
@@ -818,6 +830,8 @@
           campuses: 'openCampusesSheet',
           evaluators: 'openEvaluatorsSheet',
           calendars: 'openCalendarsSheet',
+          settings: 'openSettingsSheet',
+          audit: 'openAuditSheet',
         };
         const adminCode = document.getElementById('adminCode').value;
         google.script.run
@@ -846,6 +860,7 @@
           'overridePrimaryDeadline',
           'overrideReason',
           'serviceNotes',
+          'varianceExplanation',
           'documentLinks',
         ].forEach((id) => {
           document.getElementById(id).value = '';

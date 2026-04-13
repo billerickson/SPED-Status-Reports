@@ -11,6 +11,7 @@ This folder contains a Google Sheets adaptation of the SPED Status Reports workf
 - [Code.gs](/Users/billerickson/Downloads/SPED-Excel/google-sheets/Code.gs)
 - [Sidebar.html](/Users/billerickson/Downloads/SPED-Excel/google-sheets/Sidebar.html)
 - [appsscript.json](/Users/billerickson/Downloads/SPED-Excel/google-sheets/appsscript.json)
+- [V1_1_ROADMAP.md](/Users/billerickson/Downloads/SPED-Excel/google-sheets/V1_1_ROADMAP.md)
 
 ## Setup
 1. Create or open the Google Sheet that will hold SPED Status Reports.
@@ -38,6 +39,8 @@ Use the `SPED Status Reports` menu in the spreadsheet.
    - `Open Campuses (Admin)`
    - `Open Evaluators (Admin)`
    - `Open Calendars (Admin)`
+   - `Open Settings (Admin)`
+   - `Open Audit Log (Admin)`
 2. Enter the admin access code.
 3. Edit the rows directly in the revealed sheet.
 
@@ -54,6 +57,8 @@ Use these sheets for each type of maintenance:
   - one row per evaluator
   - set `Active = Yes` for evaluators that should appear in dropdowns
 - `DistrictCalendars`
+- `Settings`
+- `AuditLog`
   - the sheet is preloaded with dates from January 1, 2026 through June 1, 2027
   - weekends default to `No`
   - weekdays default to `Yes`
@@ -98,6 +103,8 @@ The data is stored inside this same Google Sheet on visible protected tabs:
 - `Campuses`
 - `Evaluators`
 - `DistrictCalendars`
+- `Settings`
+- `AuditLog`
 
 They are visible to everyone who can open the spreadsheet.
 Direct sheet edits are limited by Google Sheets protection to the admin accounts listed in `ADMIN_EDITOR_EMAILS`.
@@ -126,6 +133,10 @@ For milestone updates:
   - duplicate open-case blocking
   - grade level and expanded milestone tracking
   - multiple document links plus file uploads
+  - separate `Service Notes` and `Variance Explanation`
+  - audit logging for creates, updates, and document changes
+  - stronger date-order validation
+  - configurable warning colors and deadline window from `Settings`
   - district-aware instructional-day calculations
   - master dashboard plus one dashboard sheet per district
   - status flow:
@@ -136,7 +147,7 @@ For milestone updates:
     - `Evaluation Complete`
     - `ARD Scheduled`
     - `Completed`
-  - notes required when actual milestone dates differ from due dates
+  - variance explanation required when an actual milestone date is later than its due date
   - dashboard status colors plus pink/red deadline highlighting
 
 ## Security note
