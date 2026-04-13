@@ -20,11 +20,15 @@ This folder contains a Google Sheets adaptation of the SPED Status Reports workf
    - `Sidebar.html`
    - `appsscript.json`
 4. Update the `ADMIN_ACCESS_CODE` constant in `Code.gs`.
-5. Add admin Google account emails to `ADMIN_EDITOR_EMAILS` in `Code.gs`.
+5. Optional: set `UPLOADS_FOLDER_ID` in `Code.gs` if uploaded files should go to a specific Google Drive folder.
+   If left blank, the script creates or reuses `SPED Status Report Uploads` in the spreadsheet's parent folder.
+6. Add admin Google account emails to `ADMIN_EDITOR_EMAILS` in `Code.gs`.
    Use full email addresses such as `name@district.org`.
-6. Run `installSpedStatusReports()` once from the Apps Script editor.
-7. Refresh the spreadsheet.
-8. Use the `SPED Status Reports` custom menu to open the app.
+7. Run `installSpedStatusReports()` once from the Apps Script editor.
+8. Refresh the spreadsheet.
+9. Use the `SPED Status Reports` custom menu to open the app.
+
+Because uploads now store files in Google Drive, the manifest also needs the Drive scope from `appsscript.json`.
 
 ## How To Update Calendars And Dropdown Lists
 Use the `SPED Status Reports` menu in the spreadsheet.
@@ -120,9 +124,20 @@ For milestone updates:
   - `Initial` and `Re-evaluation`
   - milestone updates
   - duplicate open-case blocking
-  - multiple document links
+  - grade level and expanded milestone tracking
+  - multiple document links plus file uploads
   - district-aware instructional-day calculations
-  - auto-status and dashboard refresh
+  - master dashboard plus one dashboard sheet per district
+  - status flow:
+    - `Referral Received`
+    - `Response Sent`
+    - `Consent Received`
+    - `Evaluation in Progress`
+    - `Evaluation Complete`
+    - `ARD Scheduled`
+    - `Completed`
+  - notes required when actual milestone dates differ from due dates
+  - dashboard status colors plus pink/red deadline highlighting
 
 ## Security note
 - Confidentiality in Google Sheets depends primarily on who has access to the spreadsheet file.

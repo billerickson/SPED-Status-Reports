@@ -219,13 +219,21 @@
 
         <div class="grid two">
           <div>
+            <label for="gradeLevel">Grade Level</label>
+            <input id="gradeLevel" type="text">
+          </div>
+          <div>
             <label for="dob">DOB</label>
             <input id="dob" type="date">
           </div>
+        </div>
+
+        <div class="grid two">
           <div>
             <label for="campus">Campus</label>
             <select id="campus"></select>
           </div>
+          <div></div>
         </div>
 
         <div class="grid two">
@@ -252,25 +260,44 @@
 
         <div id="milestoneSection" class="grid">
           <div class="grid two">
+            <div>
+              <label for="responseSentDate">Response Sent Date</label>
+              <input id="responseSentDate" type="date">
+            </div>
             <div id="consentWrap">
               <label for="actualConsentDate">Actual Consent Date</label>
               <input id="actualConsentDate" type="date">
             </div>
+          </div>
+
+          <div class="grid two">
             <div>
-              <label for="actualFIIEDate">Actual FIIE Date</label>
+              <label for="evaluationStartedDate">Evaluation Started Date</label>
+              <input id="evaluationStartedDate" type="date">
+            </div>
+            <div>
+              <label for="actualFIIEDate">Evaluation Date</label>
               <input id="actualFIIEDate" type="date">
             </div>
           </div>
 
           <div class="grid two">
             <div>
+              <label for="ardScheduledDate">ARD Scheduled Date</label>
+              <input id="ardScheduledDate" type="date">
+            </div>
+            <div>
               <label for="actualARDDate">Actual ARD Date</label>
               <input id="actualARDDate" type="date">
             </div>
+          </div>
+
+          <div class="grid two">
             <div>
               <label for="overridePrimaryDeadline">Override Primary Deadline</label>
               <input id="overridePrimaryDeadline" type="date">
             </div>
+            <div></div>
           </div>
 
           <div>
@@ -285,13 +312,19 @@
         </div>
 
         <div id="serviceNotesWrap">
-          <label for="serviceNotes">Service Notes</label>
+          <label for="serviceNotes">Notes / Variance Explanation</label>
           <textarea id="serviceNotes"></textarea>
         </div>
 
         <div>
-          <label for="documentLinks">Document Links</label>
-          <textarea id="documentLinks" placeholder="One per line. Example: Referral Packet|https://drive.google.com/..."></textarea>
+          <label>Uploads</label>
+          <div class="row">
+            <button class="secondary" onclick="triggerDocumentUpload()">Upload Files</button>
+            <button class="secondary" onclick="addDocumentLink()">Add Link</button>
+          </div>
+          <input id="documentUpload" type="file" multiple class="hidden">
+          <div id="uploadedDocs" class="result-list"></div>
+          <textarea id="documentLinks" class="hidden"></textarea>
         </div>
 
         <div class="timeline">
@@ -381,6 +414,7 @@
 
         document.getElementById('campus').addEventListener('change', syncDistrictFromCampus);
         document.getElementById('district').addEventListener('change', updateTimelinePreview);
+        document.getElementById('documentUpload').addEventListener('change', handleDocumentUpload);
 
         google.script.run
           .withSuccessHandler((bootstrap) => {
@@ -494,14 +528,18 @@
           caseType: document.getElementById('caseType').value,
           studentName: document.getElementById('studentName').value.trim(),
           studentId: document.getElementById('studentId').value.trim(),
+          gradeLevel: document.getElementById('gradeLevel').value.trim(),
           dob: document.getElementById('dob').value,
           campus: document.getElementById('campus').value,
           district: document.getElementById('district').value,
           leadEvaluator: document.getElementById('leadEvaluator').value,
           referralReceivedDate: document.getElementById('referralReceivedDate').value,
           reevalDueDate: document.getElementById('reevalDueDate').value,
+          responseSentDate: document.getElementById('responseSentDate').value,
           actualConsentDate: document.getElementById('actualConsentDate').value,
+          evaluationStartedDate: document.getElementById('evaluationStartedDate').value,
           actualFIIEDate: document.getElementById('actualFIIEDate').value,
+          ardScheduledDate: document.getElementById('ardScheduledDate').value,
           actualARDDate: document.getElementById('actualARDDate').value,
           overridePrimaryDeadline: document.getElementById('overridePrimaryDeadline').value,
           overrideReason: document.getElementById('overrideReason').value.trim(),
@@ -592,6 +630,7 @@
         document.getElementById('caseType').value = detail.CaseType;
         document.getElementById('studentName').value = detail.StudentName || '';
         document.getElementById('studentId').value = detail.StudentID || '';
+        document.getElementById('gradeLevel').value = detail.GradeLevel || '';
         document.getElementById('dob').value = toInputDate(detail.DOB);
         document.getElementById('campus').value = detail.Campus || '';
         document.getElementById('district').value = detail.District || '';
@@ -599,13 +638,17 @@
         document.getElementById('leadEvaluator').value = detail.LeadEvaluator || '';
         document.getElementById('referralReceivedDate').value = toInputDate(detail.ReferralReceivedDate);
         document.getElementById('reevalDueDate').value = toInputDate(detail.ReevalDueDate);
+        document.getElementById('responseSentDate').value = toInputDate(detail.ResponseSentDate);
         document.getElementById('actualConsentDate').value = toInputDate(detail.ActualConsentDate);
+        document.getElementById('evaluationStartedDate').value = toInputDate(detail.EvaluationStartedDate);
         document.getElementById('actualFIIEDate').value = toInputDate(detail.ActualFIIEDate);
+        document.getElementById('ardScheduledDate').value = toInputDate(detail.ARDScheduledDate);
         document.getElementById('actualARDDate').value = toInputDate(detail.ActualARDDate);
         document.getElementById('overridePrimaryDeadline').value = toInputDate(detail.ManualPrimaryDeadline);
         document.getElementById('overrideReason').value = detail.ManualOverrideReason || '';
         document.getElementById('serviceNotes').value = detail.ServiceNotes || '';
         document.getElementById('documentLinks').value = detail.documentsText || '';
+        renderDocumentList(detail.documents || parseDocumentText(detail.documentsText || ''));
 
         Object.keys(SERVICE_LABELS).forEach((field) => {
           const el = document.getElementById(field);
@@ -627,12 +670,107 @@
             state.selectedCaseId = result.caseId;
             renderTimeline(result.timeline || {});
             setStatus(`Saved ${result.caseId}.`, 'success');
-            if (state.mode !== 'update') {
-              resetEditor(false);
-            }
           })
           .withFailureHandler(handleError)
           [action](payload);
+      }
+
+      function triggerDocumentUpload() {
+        if (!state.selectedCaseId) {
+          setStatus('Save or load the case before uploading files.', 'error');
+          return;
+        }
+        document.getElementById('documentUpload').click();
+      }
+
+      function handleDocumentUpload(event) {
+        const files = [...(event.target.files || [])];
+        if (!files.length) {
+          return;
+        }
+
+        Promise.all(files.map(readFileForUpload))
+          .then((uploads) => {
+            google.script.run
+              .withSuccessHandler((result) => {
+                document.getElementById('documentLinks').value = result.documentsText || '';
+                renderDocumentList(result.documents || []);
+                setStatus(`Uploaded ${uploads.length} document(s).`, 'success');
+              })
+              .withFailureHandler(handleError)
+              .uploadFilesToCase(state.selectedCaseId, uploads);
+          })
+          .catch(handleError)
+          .finally(() => {
+            document.getElementById('documentUpload').value = '';
+          });
+      }
+
+      function readFileForUpload(file) {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            const result = String(reader.result || '');
+            const base64 = result.includes(',') ? result.split(',')[1] : result;
+            resolve({
+              name: file.name,
+              mimeType: file.type || 'application/octet-stream',
+              content: base64,
+            });
+          };
+          reader.onerror = () => reject(reader.error || new Error(`Unable to read ${file.name}.`));
+          reader.readAsDataURL(file);
+        });
+      }
+
+      function addDocumentLink() {
+        const label = window.prompt('Document label');
+        if (!label) {
+          return;
+        }
+        const url = window.prompt('Document URL');
+        if (!url) {
+          return;
+        }
+
+        const current = parseDocumentText(document.getElementById('documentLinks').value);
+        current.push({ label: label.trim(), path: url.trim() });
+        document.getElementById('documentLinks').value = current
+          .map((item) => `${item.label}|${item.path}`)
+          .join('\n');
+        renderDocumentList(current);
+      }
+
+      function parseDocumentText(raw) {
+        return String(raw || '')
+          .split('\n')
+          .map((line) => line.trim())
+          .filter(Boolean)
+          .map((line, index) => {
+            const [label, ...rest] = line.split('|');
+            return {
+              label: rest.length ? label.trim() : `Document ${index + 1}`,
+              path: rest.length ? rest.join('|').trim() : label.trim(),
+            };
+          });
+      }
+
+      function renderDocumentList(documents) {
+        const wrap = document.getElementById('uploadedDocs');
+        wrap.innerHTML = '';
+        if (!documents.length) {
+          wrap.innerHTML = '<div class="muted">No uploads linked yet.</div>';
+          return;
+        }
+
+        documents.forEach((item) => {
+          const div = document.createElement('div');
+          div.className = 'result-item';
+          const label = item.DocumentLabel || item.label || 'Document';
+          const path = item.DocumentPath || item.path || '';
+          div.innerHTML = `<strong>${escapeHtml(label)}</strong><br><span class="muted">${escapeHtml(path)}</span>`;
+          wrap.appendChild(div);
+        });
       }
 
       function refreshDashboard() {
@@ -669,14 +807,18 @@
         [
           'studentName',
           'studentId',
+          'gradeLevel',
           'dob',
           'campus',
           'district',
           'leadEvaluator',
           'referralReceivedDate',
           'reevalDueDate',
+          'responseSentDate',
           'actualConsentDate',
+          'evaluationStartedDate',
           'actualFIIEDate',
+          'ardScheduledDate',
           'actualARDDate',
           'overridePrimaryDeadline',
           'overrideReason',
@@ -698,6 +840,7 @@
           state.mode = null;
         }
         renderTimeline({});
+        renderDocumentList([]);
         setStatus('Ready.', 'success');
       }
 
@@ -720,6 +863,15 @@
 
       function handleError(error) {
         setStatus(error && error.message ? error.message : String(error), 'error');
+      }
+
+      function escapeHtml(value) {
+        return String(value || '')
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
       }
 
       document.getElementById('caseType').addEventListener('change', () => toggleCaseTypeFields(true));

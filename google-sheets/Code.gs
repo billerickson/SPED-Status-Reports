@@ -1,5 +1,7 @@
 const ADMIN_ACCESS_CODE = 'CHANGE_ME_BEFORE_PRODUCTION';
 const ADMIN_EDITOR_EMAILS = [];
+const UPLOADS_FOLDER_ID = '';
+const DISTRICT_DASHBOARD_PREFIX = 'Dashboard - ';
 
 const SHEETS = {
   cases: 'Cases',
@@ -18,8 +20,12 @@ const CASE_TYPES = {
 
 const STATUSES = {
   referralReceived: 'Referral Received',
-  inProgress: 'In Progress',
-  complete: 'Complete',
+  responseSent: 'Response Sent',
+  consentReceived: 'Consent Received',
+  evaluationInProgress: 'Evaluation in Progress',
+  evaluationComplete: 'Evaluation Complete',
+  ardScheduled: 'ARD Scheduled',
+  completed: 'Completed',
 };
 
 const CASE_HEADERS = [
@@ -27,6 +33,7 @@ const CASE_HEADERS = [
   'CaseType',
   'StudentName',
   'StudentID',
+  'GradeLevel',
   'DOB',
   'Campus',
   'District',
@@ -34,10 +41,13 @@ const CASE_HEADERS = [
   'Status',
   'ReferralReceivedDate',
   'ResponseDueDate',
+  'ResponseSentDate',
   'ProjectedConsentDate',
   'ActualConsentDate',
   'ProjectedFIIEDueDate',
   'ActualFIIEDate',
+  'EvaluationStartedDate',
+  'ARDScheduledDate',
   'ProjectedARDDueDate',
   'ActualARDDate',
   'ReevalDueDate',
@@ -75,6 +85,18 @@ const SERVICE_FIELDS = [
   'Service_DHH',
   'Service_LanguageDominanceBilingual',
 ];
+
+const SERVICE_LABELS = {
+  Service_SchoolPsychologist: 'School Psychologist',
+  Service_OccupationalTherapist: 'Occupational Therapist',
+  Service_PhysicalTherapist: 'Physical Therapist',
+  Service_CounselingEvaluation: 'Counseling Evaluation',
+  Service_FBA: 'FBA',
+  Service_SpeechPathologist: 'Speech Pathologist',
+  Service_VI: 'VI',
+  Service_DHH: 'DHH',
+  Service_LanguageDominanceBilingual: 'Language Dominance / Bilingual',
+};
 
 function onOpen() {
   SpreadsheetApp.getUi()
@@ -194,7 +216,8 @@ function getCaseDetails(caseId) {
   }
   const row = record.row;
 
-  row.documentsText = getCaseDocumentsText_(caseId);
+  row.documents = getCaseDocuments_(caseId);
+  row.documentsText = buildCaseDocumentsText_(row.documents);
   row.timelinePreview = normalizeTimelineForUi_(
     buildProjectedDates_({
       caseType: row.CaseType,
@@ -221,6 +244,7 @@ function saveNewCase(payload) {
     }
 
     const timeline = buildProjectedDates_(payload);
+    validateVarianceNotes_(payload, timeline);
     const caseId = generateCaseId_(payload.caseType);
     const now = new Date();
     const row = buildStoredCaseRow_(caseId, payload, timeline, now, now);
@@ -261,14 +285,18 @@ function updateExistingCase(payload) {
     const merged = Object.assign({}, existing, {
       StudentName: payload.studentName,
       StudentID: normalizeStudentId_(payload.studentId),
+      GradeLevel: String(payload.gradeLevel || '').trim(),
       DOB: parseDate_(payload.dob),
       Campus: payload.campus,
       District: payload.district,
       LeadEvaluator: payload.leadEvaluator,
       ReferralReceivedDate: parseDate_(payload.referralReceivedDate),
       ReevalDueDate: parseDate_(payload.reevalDueDate),
+      ResponseSentDate: parseDate_(payload.responseSentDate),
       ActualConsentDate: parseDate_(payload.actualConsentDate),
       ActualFIIEDate: parseDate_(payload.actualFIIEDate),
+      EvaluationStartedDate: parseDate_(payload.evaluationStartedDate),
+      ARDScheduledDate: parseDate_(payload.ardScheduledDate),
       ActualARDDate: parseDate_(payload.actualARDDate),
       ServiceNotes: payload.serviceNotes || '',
       ManualPrimaryDeadline: parseDate_(payload.overridePrimaryDeadline),
@@ -288,12 +316,20 @@ function updateExistingCase(payload) {
       actualFIIEDate: merged.ActualFIIEDate,
       reevalDueDate: merged.ReevalDueDate,
     });
+    validateVarianceNotes_(merged, timeline);
 
     merged.ResponseDueDate = timeline.responseDueDate;
     merged.ProjectedConsentDate = timeline.projectedConsentDate;
     merged.ProjectedFIIEDueDate = timeline.projectedFiiEDueDate;
     merged.ProjectedARDDueDate = timeline.projectedArdDueDate;
-    merged.Status = determineStatus_(merged.ActualConsentDate, merged.ActualARDDate);
+    merged.Status = determineStatus_(
+      merged.ResponseSentDate,
+      merged.ActualConsentDate,
+      merged.EvaluationStartedDate,
+      merged.ActualFIIEDate,
+      merged.ARDScheduledDate,
+      merged.ActualARDDate
+    );
     merged.PrimaryDeadline = determinePrimaryDeadline_(
       existing.CaseType,
       merged.ResponseDueDate,
@@ -370,57 +406,56 @@ function refreshDashboard() {
 
 function refreshDashboard_(applyLayout) {
   const ss = SpreadsheetApp.getActive();
-  const sheet = ss.getSheetByName(SHEETS.dashboard);
   const cases = getTableRows_(SHEETS.cases, CASE_HEADERS);
+  const documentsByCase = getCaseDocumentsMap_();
 
-  const headers = [
-    'Case ID',
-    'Case Type',
-    'Student Name',
-    'Student ID',
-    'Campus',
-    'District',
-    'Lead Evaluator',
-    'Status',
-    'Primary Deadline',
-    'Response Due',
-    'Projected FIIE Due',
-    'Projected ARD Due',
-    'Re-eval Due',
-    'Updated At',
-  ];
+  renderDashboardSheet_(
+    ensureSheet_(SHEETS.dashboard, ['SPED Status Reports Dashboard']),
+    'SPED Status Reports Dashboard',
+    'Use built-in filters on row 4 to filter by district, campus, evaluator, case type, or status.',
+    cases,
+    documentsByCase,
+    applyLayout
+  );
+
+  getActiveColumnValues_(SHEETS.districts, 'District').forEach((districtName) => {
+    const districtSheetName = getDistrictDashboardSheetName_(districtName);
+    const existingSheet = ss.getSheetByName(districtSheetName);
+    const districtSheet = existingSheet || ss.insertSheet(districtSheetName);
+    renderDashboardSheet_(
+      districtSheet,
+      `${districtName} SPED Status Reports`,
+      `District dashboard for ${districtName}.`,
+      cases.filter((row) => String(row.District).trim() === String(districtName).trim()),
+      documentsByCase,
+      applyLayout
+    );
+    if ((applyLayout || !existingSheet) && getAdminEditorEmails_().length) {
+      applyProtection_(districtSheet);
+    }
+  });
+}
+
+function renderDashboardSheet_(sheet, title, subtitle, cases, documentsByCase, applyLayout) {
+  const headers = getDashboardHeaders_();
+  const records = cases.map((row) => buildDashboardRecord_(row, documentsByCase[row.CaseID] || []));
+  const output = records.map((record) => record.values);
 
   if (applyLayout || sheet.getRange(4, 1).getValue() !== headers[0]) {
     sheet.clear();
-    sheet.getRange(1, 1).setValue('SPED Status Reports Dashboard').setFontWeight('bold').setFontSize(16);
-    sheet
-      .getRange(2, 1)
-      .setValue('Use built-in filters on row 4 to filter by district, campus, evaluator, case type, or status.');
+    sheet.getRange(1, 1).setValue(title).setFontWeight('bold').setFontSize(16);
+    sheet.getRange(2, 1).setValue(subtitle);
     sheet.getRange(4, 1, 1, headers.length).setValues([headers]).setFontWeight('bold');
+    sheet.setFrozenRows(4);
   } else if (sheet.getLastRow() > 4) {
     sheet.getRange(5, 1, sheet.getLastRow() - 4, headers.length).clearContent().setBackground('#ffffff');
   }
 
-  const output = cases.map((row) => [
-    row.CaseID,
-    row.CaseType,
-    row.StudentName,
-    row.StudentID,
-    row.Campus,
-    row.District,
-    row.LeadEvaluator,
-    row.Status,
-    row.PrimaryDeadline || '',
-    row.ResponseDueDate || '',
-    row.ProjectedFIIEDueDate || '',
-    row.ProjectedARDDueDate || '',
-    row.ReevalDueDate || '',
-    row.UpdatedAt || '',
-  ]);
-
   if (output.length) {
     sheet.getRange(5, 1, output.length, headers.length).setValues(output);
-    applyDashboardFormatting_(sheet, 5, output.length);
+    applyDashboardFormatting_(sheet, 5, records);
+    sheet.getRange(5, 4, output.length, 2).setNumberFormat('@');
+    sheet.getRange(5, headers.length - 1, output.length, 2).setWrap(true);
   }
 
   if (sheet.getFilter()) {
@@ -430,6 +465,73 @@ function refreshDashboard_(applyLayout) {
   if (applyLayout) {
     sheet.autoResizeColumns(1, headers.length);
   }
+}
+
+function getDashboardHeaders_() {
+  return [
+    'Case ID',
+    'Case Type',
+    'Student Name',
+    'Student ID',
+    'Grade Level',
+    'Campus',
+    'District',
+    'Eval Lead',
+    'Referral Date',
+    'Response Due Date',
+    'Consent Date',
+    'Evaluation Due Date',
+    'Evaluation Date',
+    'ARD Due Date',
+    'ARD Date',
+    'Status',
+    ...SERVICE_FIELDS.map((field) => SERVICE_LABELS[field] || field),
+    'Uploads',
+    'Notes',
+  ];
+}
+
+function buildDashboardRecord_(row, documents) {
+  const evaluationDueDate = getEvaluationDueDate_(row, {
+    projectedFiiEDueDate: row.ProjectedFIIEDueDate,
+  });
+  return {
+    values: [
+      row.CaseID,
+      row.CaseType,
+      row.StudentName,
+      row.StudentID,
+      row.GradeLevel || '',
+      row.Campus,
+      row.District,
+      row.LeadEvaluator,
+      row.ReferralReceivedDate || '',
+      row.ResponseDueDate || '',
+      row.ActualConsentDate || '',
+      evaluationDueDate || '',
+      row.ActualFIIEDate || '',
+      row.ProjectedARDDueDate || '',
+      row.ActualARDDate || '',
+      row.Status,
+      ...SERVICE_FIELDS.map((field) => (Number(row[field]) === 1 ? 'Yes' : 'No')),
+      documents.map((item) => `${item.DocumentLabel}|${item.DocumentPath}`).join('\n'),
+      row.ServiceNotes || '',
+    ],
+    status: row.Status,
+    responseDueDate: row.ResponseDueDate,
+    responseCompletedDate: row.ResponseSentDate,
+    evaluationDueDate,
+    evaluationCompletedDate: row.ActualFIIEDate,
+    ardDueDate: row.ProjectedARDDueDate,
+    ardCompletedDate: row.ActualARDDate,
+  };
+}
+
+function getDistrictDashboardSheetName_(districtName) {
+  const cleanedName = String(districtName || '')
+    .replace(/[\[\]\\/?*:]/g, '-')
+    .trim();
+  return `${DISTRICT_DASHBOARD_PREFIX}${cleanedName}`.slice(0, 99) || `${DISTRICT_DASHBOARD_PREFIX}District`;
 }
 
 function ensureWorkbookScaffold_(options) {
@@ -474,16 +576,48 @@ function ensureSheet_(sheetName, headers) {
   }
 
   if (headers && headers.length) {
-    const existingHeaders = sheet.getLastColumn() > 0 ? sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), headers.length)).getValues()[0] : [];
+    const existingHeaders = sheet.getLastColumn() > 0 ? sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0] : [];
     const needsHeaders = headers.some((header, index) => existingHeaders[index] !== header);
     if (needsHeaders) {
+      const preservedRows = getPreservedSheetRows_(sheet, existingHeaders, headers);
       sheet.clear();
       sheet.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight('bold');
+      if (preservedRows.length) {
+        sheet.getRange(2, 1, preservedRows.length, headers.length).setValues(preservedRows);
+      }
       sheet.setFrozenRows(1);
     }
   }
 
+  applySheetColumnFormats_(sheetName, sheet);
   return sheet;
+}
+
+function getPreservedSheetRows_(sheet, existingHeaders, targetHeaders) {
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2 || !existingHeaders.length) {
+    return [];
+  }
+
+  const values = sheet.getRange(2, 1, lastRow - 1, existingHeaders.length).getValues();
+  const headerMap = getHeaderMap_(existingHeaders);
+
+  return values.map((row) => targetHeaders.map((header) => {
+    if (headerMap[header] !== undefined) {
+      return row[headerMap[header]];
+    }
+    return '';
+  }));
+}
+
+function applySheetColumnFormats_(sheetName, sheet) {
+  if (sheetName !== SHEETS.cases || sheet.getMaxRows() < 2) {
+    return;
+  }
+
+  const headerMap = getHeaderMap_(CASE_HEADERS);
+  sheet.getRange(2, headerMap.StudentID + 1, Math.max(sheet.getMaxRows() - 1, 1), 1).setNumberFormat('@');
+  sheet.getRange(2, headerMap.GradeLevel + 1, Math.max(sheet.getMaxRows() - 1, 1), 1).setNumberFormat('@');
 }
 
 function applyProtection_(sheet) {
@@ -515,7 +649,7 @@ function applyProtection_(sheet) {
 }
 
 function applyAllSheetProtections_() {
-  Object.values(SHEETS).forEach((name) => {
+  getManagedSheetNames_().forEach((name) => {
     const sheet = SpreadsheetApp.getActive().getSheetByName(name);
     if (sheet) {
       applyProtection_(sheet);
@@ -524,12 +658,19 @@ function applyAllSheetProtections_() {
 }
 
 function showAllSheets_() {
-  Object.values(SHEETS).forEach((name) => {
+  getManagedSheetNames_().forEach((name) => {
     const sheet = SpreadsheetApp.getActive().getSheetByName(name);
     if (sheet) {
       sheet.showSheet();
     }
   });
+}
+
+function getManagedSheetNames_() {
+  const districtDashboardNames = getActiveColumnValues_(SHEETS.districts, 'District').map((districtName) => (
+    getDistrictDashboardSheetName_(districtName)
+  ));
+  return [...new Set(Object.values(SHEETS).concat(districtDashboardNames))];
 }
 
 function getAdminEditorEmails_() {
@@ -701,8 +842,11 @@ function openAdminSheet_(sheetName, adminCode) {
 }
 
 function buildStoredCaseRow_(caseId, payload, timeline, createdAt, updatedAt) {
+  const responseSentDate = parseDate_(payload.responseSentDate);
   const actualConsentDate = parseDate_(payload.actualConsentDate);
   const actualFiiEDate = parseDate_(payload.actualFIIEDate);
+  const evaluationStartedDate = parseDate_(payload.evaluationStartedDate);
+  const ardScheduledDate = parseDate_(payload.ardScheduledDate);
   const actualArdDate = parseDate_(payload.actualARDDate);
   const reevalDueDate = parseDate_(payload.reevalDueDate);
   const manualPrimaryDeadline = parseDate_(payload.overridePrimaryDeadline);
@@ -712,17 +856,28 @@ function buildStoredCaseRow_(caseId, payload, timeline, createdAt, updatedAt) {
     CaseType: payload.caseType,
     StudentName: payload.studentName,
     StudentID: normalizeStudentId_(payload.studentId),
+    GradeLevel: String(payload.gradeLevel || '').trim(),
     DOB: parseDate_(payload.dob),
     Campus: payload.campus,
     District: payload.district,
     LeadEvaluator: payload.leadEvaluator,
-    Status: determineStatus_(actualConsentDate, actualArdDate),
+    Status: determineStatus_(
+      responseSentDate,
+      actualConsentDate,
+      evaluationStartedDate,
+      actualFiiEDate,
+      ardScheduledDate,
+      actualArdDate
+    ),
     ReferralReceivedDate: parseDate_(payload.referralReceivedDate),
     ResponseDueDate: timeline.responseDueDate,
+    ResponseSentDate: responseSentDate,
     ProjectedConsentDate: timeline.projectedConsentDate,
     ActualConsentDate: actualConsentDate,
     ProjectedFIIEDueDate: timeline.projectedFiiEDueDate,
     ActualFIIEDate: actualFiiEDate,
+    EvaluationStartedDate: evaluationStartedDate,
+    ARDScheduledDate: ardScheduledDate,
     ProjectedARDDueDate: timeline.projectedArdDueDate,
     ActualARDDate: actualArdDate,
     ReevalDueDate: reevalDueDate,
@@ -787,6 +942,36 @@ function validatePayload_(payload, requireCaseId) {
     if (!payload.overridePrimaryDeadline || !payload.overrideReason) {
       throw new Error('Both an override due date and an override reason are required.');
     }
+  }
+}
+
+function validateVarianceNotes_(payload, timeline) {
+  const notes = String(payload.serviceNotes || '').trim();
+  const mismatches = [];
+  const responseSentDate = parseDate_(payload.responseSentDate);
+  const actualConsentDate = parseDate_(payload.actualConsentDate);
+  const actualFiiEDate = parseDate_(payload.actualFIIEDate);
+  const actualArdDate = parseDate_(payload.actualARDDate);
+  const responseDueDate = parseDate_(timeline.responseDueDate);
+  const consentDueDate = parseDate_(timeline.projectedConsentDate);
+  const evaluationDueDate = parseDate_(getEvaluationDueDate_(payload, timeline));
+  const ardDueDate = parseDate_(timeline.projectedArdDueDate);
+
+  if (responseSentDate && responseDueDate && !sameDay_(responseSentDate, responseDueDate)) {
+    mismatches.push('Response Sent Date');
+  }
+  if (actualConsentDate && consentDueDate && !sameDay_(actualConsentDate, consentDueDate)) {
+    mismatches.push('Consent Date');
+  }
+  if (actualFiiEDate && evaluationDueDate && !sameDay_(actualFiiEDate, evaluationDueDate)) {
+    mismatches.push('Evaluation Date');
+  }
+  if (actualArdDate && ardDueDate && !sameDay_(actualArdDate, ardDueDate)) {
+    mismatches.push('ARD Date');
+  }
+
+  if (mismatches.length && !notes) {
+    throw new Error(`Notes are required when due dates do not match actual dates: ${mismatches.join(', ')}.`);
   }
 }
 
@@ -979,12 +1164,31 @@ function getJune30ForSchoolYear_(referenceDate) {
   return createLocalDate_(dueYear, 6, 30);
 }
 
-function determineStatus_(actualConsentDate, actualArdDate) {
+function determineStatus_(
+  responseSentDate,
+  actualConsentDate,
+  evaluationStartedDate,
+  actualFiiEDate,
+  ardScheduledDate,
+  actualArdDate
+) {
   if (actualArdDate) {
-    return STATUSES.complete;
+    return STATUSES.completed;
+  }
+  if (ardScheduledDate) {
+    return STATUSES.ardScheduled;
+  }
+  if (actualFiiEDate) {
+    return STATUSES.evaluationComplete;
+  }
+  if (evaluationStartedDate) {
+    return STATUSES.evaluationInProgress;
   }
   if (actualConsentDate) {
-    return STATUSES.inProgress;
+    return STATUSES.consentReceived;
+  }
+  if (responseSentDate) {
+    return STATUSES.responseSent;
   }
   return STATUSES.referralReceived;
 }
@@ -1026,6 +1230,13 @@ function determinePrimaryDeadline_(
   return actualArdDate;
 }
 
+function getEvaluationDueDate_(row, timeline) {
+  if ((row.caseType || row.CaseType) === CASE_TYPES.reevaluation) {
+    return row.reevalDueDate || row.ReevalDueDate || '';
+  }
+  return row.projectedFiiEDueDate || row.ProjectedFIIEDueDate || (timeline ? timeline.projectedFiiEDueDate : '');
+}
+
 function duplicateOpenCaseExists_(studentId, caseType, ignoreCaseId) {
   const normalizedStudentId = normalizeStudentId_(studentId);
   const rows = getTableRows_(SHEETS.cases, CASE_HEADERS);
@@ -1036,7 +1247,7 @@ function duplicateOpenCaseExists_(studentId, caseType, ignoreCaseId) {
     if (row.CaseType !== caseType) {
       return false;
     }
-    if (row.Status === STATUSES.complete) {
+    if (row.Status === STATUSES.completed) {
       return false;
     }
     if (ignoreCaseId && row.CaseID === ignoreCaseId) {
@@ -1084,6 +1295,52 @@ function replaceCaseDocuments_(caseId, rawDocumentText) {
   }
 }
 
+function uploadFilesToCase(caseId, files) {
+  ensureWorkbookReady_();
+
+  if (!caseId) {
+    throw new Error('Save or load the case before uploading files.');
+  }
+
+  const uploads = Array.isArray(files) ? files : [];
+  if (!uploads.length) {
+    return {
+      documents: getCaseDocuments_(caseId),
+      documentsText: getCaseDocumentsText_(caseId),
+    };
+  }
+
+  const folder = getCaseUploadFolder_(caseId);
+  const existingDocuments = getCaseDocuments_(caseId).map((item) => ({
+    label: item.DocumentLabel,
+    path: item.DocumentPath,
+  }));
+
+  uploads.forEach((file) => {
+    if (!file || !file.name || !file.content) {
+      return;
+    }
+    const blob = Utilities.newBlob(
+      Utilities.base64Decode(file.content),
+      file.mimeType || MimeType.PLAIN_TEXT,
+      file.name
+    );
+    const createdFile = folder.createFile(blob);
+    existingDocuments.push({
+      label: file.name,
+      path: createdFile.getUrl(),
+    });
+  });
+
+  replaceCaseDocuments_(caseId, buildCaseDocumentsText_(existingDocuments));
+  refreshDashboard_(false);
+
+  return {
+    documents: getCaseDocuments_(caseId),
+    documentsText: getCaseDocumentsText_(caseId),
+  };
+}
+
 function parseDocumentLines_(rawDocumentText, caseId) {
   const lines = String(rawDocumentText || '')
     .replace(/\r\n/g, '\n')
@@ -1108,11 +1365,55 @@ function parseDocumentLines_(rawDocumentText, caseId) {
 }
 
 function getCaseDocumentsText_(caseId) {
-  const rows = getTableRows_(SHEETS.documents, DOCUMENT_HEADERS);
-  return rows
-    .filter((row) => row.CaseID === caseId)
-    .map((row) => `${row.DocumentLabel}|${row.DocumentPath}`)
+  return buildCaseDocumentsText_(getCaseDocuments_(caseId));
+}
+
+function buildCaseDocumentsText_(documents) {
+  return (documents || [])
+    .map((row) => `${row.DocumentLabel || row.label}|${row.DocumentPath || row.path}`)
     .join('\n');
+}
+
+function getCaseDocuments_(caseId) {
+  const rows = getTableRows_(SHEETS.documents, DOCUMENT_HEADERS);
+  return rows.filter((row) => row.CaseID === caseId);
+}
+
+function getCaseDocumentsMap_() {
+  const rows = getTableRows_(SHEETS.documents, DOCUMENT_HEADERS);
+  return rows.reduce((acc, row) => {
+    if (!acc[row.CaseID]) {
+      acc[row.CaseID] = [];
+    }
+    acc[row.CaseID].push(row);
+    return acc;
+  }, {});
+}
+
+function getCaseUploadFolder_(caseId) {
+  const parentFolder = getUploadsRootFolder_();
+  const existingFolders = parentFolder.getFoldersByName(caseId);
+  return existingFolders.hasNext() ? existingFolders.next() : parentFolder.createFolder(caseId);
+}
+
+function getUploadsRootFolder_() {
+  if (UPLOADS_FOLDER_ID) {
+    return DriveApp.getFolderById(UPLOADS_FOLDER_ID);
+  }
+
+  const spreadsheetFile = DriveApp.getFileById(SpreadsheetApp.getActive().getId());
+  const parentFolders = spreadsheetFile.getParents();
+  const folderName = 'SPED Status Report Uploads';
+
+  if (parentFolders.hasNext()) {
+    const parent = parentFolders.next();
+    const existing = parent.getFoldersByName(folderName);
+    return existing.hasNext() ? existing.next() : parent.createFolder(folderName);
+  }
+
+  const rootFolder = DriveApp.getRootFolder();
+  const existing = rootFolder.getFoldersByName(folderName);
+  return existing.hasNext() ? existing.next() : rootFolder.createFolder(folderName);
 }
 
 function generateCaseId_(caseType) {
@@ -1135,10 +1436,13 @@ function normalizeCaseForUi_(row) {
     DOB: formatDate_(row.DOB),
     ReferralReceivedDate: formatDate_(row.ReferralReceivedDate),
     ResponseDueDate: formatDate_(row.ResponseDueDate),
+    ResponseSentDate: formatDate_(row.ResponseSentDate),
     ProjectedConsentDate: formatDate_(row.ProjectedConsentDate),
     ActualConsentDate: formatDate_(row.ActualConsentDate),
     ProjectedFIIEDueDate: formatDate_(row.ProjectedFIIEDueDate),
     ActualFIIEDate: formatDate_(row.ActualFIIEDate),
+    EvaluationStartedDate: formatDate_(row.EvaluationStartedDate),
+    ARDScheduledDate: formatDate_(row.ARDScheduledDate),
     ProjectedARDDueDate: formatDate_(row.ProjectedARDDueDate),
     ActualARDDate: formatDate_(row.ActualARDDate),
     ReevalDueDate: formatDate_(row.ReevalDueDate),
@@ -1225,11 +1529,11 @@ function normalizeStudentId_(value) {
     return '';
   }
 
-  if (/^\d+(\.0+)?$/.test(text)) {
+  if (/^\d+\.0+$/.test(text)) {
     return text.replace(/\.0+$/, '');
   }
 
-  return text.toUpperCase();
+  return text;
 }
 
 function toObject_(headers, values) {
@@ -1246,33 +1550,51 @@ function getHeaderMap_(headers) {
   }, {});
 }
 
-function applyDashboardFormatting_(sheet, startRow, rowCount) {
-  const range = sheet.getRange(startRow, 1, rowCount, 14);
-  const values = range.getValues();
-  const backgrounds = values.map((row) => {
-    const status = row[7];
-    const deadline = parseDate_(row[8]);
+function applyDashboardFormatting_(sheet, startRow, records) {
+  const headers = getDashboardHeaders_();
+  const range = sheet.getRange(startRow, 1, records.length, headers.length);
+  const backgrounds = records.map(() => new Array(headers.length).fill('#ffffff'));
+  const statusColumnIndex = headers.indexOf('Status');
+  const responseDueColumnIndex = headers.indexOf('Response Due Date');
+  const evaluationDueColumnIndex = headers.indexOf('Evaluation Due Date');
+  const ardDueColumnIndex = headers.indexOf('ARD Due Date');
+  const statusColors = {
+    [STATUSES.referralReceived]: '#d9eaf7',
+    [STATUSES.responseSent]: '#f4cccc',
+    [STATUSES.consentReceived]: '#fff2cc',
+    [STATUSES.evaluationInProgress]: '#fce5cd',
+    [STATUSES.evaluationComplete]: '#d9ead3',
+    [STATUSES.ardScheduled]: '#d0e0e3',
+    [STATUSES.completed]: '#b6d7a8',
+  };
 
-    if (status === STATUSES.complete) {
-      return new Array(14).fill('#c6efce');
-    }
-    if (deadline) {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const compare = new Date(deadline);
-      compare.setHours(0, 0, 0, 0);
-      const diffDays = Math.floor((compare - today) / 86400000);
-
-      if (diffDays < 0) {
-        return new Array(14).fill('#ffc7ce');
-      }
-      if (diffDays <= 7) {
-        return new Array(14).fill('#ffeb9c');
-      }
-    }
-
-    return new Array(14).fill('#ffffff');
+  records.forEach((record, rowIndex) => {
+    backgrounds[rowIndex][statusColumnIndex] = statusColors[record.status] || '#ffffff';
+    applyDueDateColor_(backgrounds[rowIndex], responseDueColumnIndex, record.responseDueDate, record.responseCompletedDate);
+    applyDueDateColor_(backgrounds[rowIndex], evaluationDueColumnIndex, record.evaluationDueDate, record.evaluationCompletedDate);
+    applyDueDateColor_(backgrounds[rowIndex], ardDueColumnIndex, record.ardDueDate, record.ardCompletedDate);
   });
 
   range.setBackgrounds(backgrounds);
+}
+
+function applyDueDateColor_(rowBackgrounds, columnIndex, dueDate, completedDate) {
+  if (completedDate || !dueDate) {
+    return;
+  }
+
+  const today = normalizeDateForStorage_(new Date());
+  const due = parseDate_(dueDate);
+  if (!due) {
+    return;
+  }
+
+  const diffDays = Math.floor((due - today) / 86400000);
+  if (diffDays < 0) {
+    rowBackgrounds[columnIndex] = '#ff9999';
+    return;
+  }
+  if (diffDays <= 30) {
+    rowBackgrounds[columnIndex] = '#f4cccc';
+  }
 }
