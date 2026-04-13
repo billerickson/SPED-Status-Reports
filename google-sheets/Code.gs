@@ -223,7 +223,7 @@ function getCaseDetails(caseId) {
   }
   const row = record.row;
 
-  row.documents = getCaseDocuments_(caseId);
+  row.documents = normalizeDocumentsForUi_(getCaseDocuments_(caseId));
   row.documentsText = buildCaseDocumentsText_(row.documents);
   row.timelinePreview = normalizeTimelineForUi_(
     buildProjectedDates_({
@@ -1315,7 +1315,7 @@ function uploadFilesToCase(caseId, files) {
   const uploads = Array.isArray(files) ? files : [];
   if (!uploads.length) {
     return {
-      documents: getCaseDocuments_(caseId),
+      documents: normalizeDocumentsForUi_(getCaseDocuments_(caseId)),
       documentsText: getCaseDocumentsText_(caseId),
     };
   }
@@ -1346,7 +1346,7 @@ function uploadFilesToCase(caseId, files) {
   refreshDashboard_(false);
 
   return {
-    documents: getCaseDocuments_(caseId),
+    documents: normalizeDocumentsForUi_(getCaseDocuments_(caseId)),
     documentsText: getCaseDocumentsText_(caseId),
   };
 }
@@ -1387,6 +1387,16 @@ function buildCaseDocumentsText_(documents) {
 function getCaseDocuments_(caseId) {
   const rows = getTableRows_(SHEETS.documents, DOCUMENT_HEADERS);
   return rows.filter((row) => row.CaseID === caseId);
+}
+
+function normalizeDocumentsForUi_(documents) {
+  return (documents || []).map((row) => ({
+    DocumentID: row.DocumentID || '',
+    CaseID: row.CaseID || '',
+    DocumentLabel: row.DocumentLabel || '',
+    DocumentPath: row.DocumentPath || '',
+    AddedAt: formatDateTime_(row.AddedAt),
+  }));
 }
 
 function getCaseDocumentsMap_() {
