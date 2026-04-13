@@ -361,6 +361,7 @@
         mode: null,
         selectedCaseId: null,
         searchResults: [],
+        timelinePreviewTimer: null,
       };
 
       const watchedFields = [
@@ -510,11 +511,22 @@
       }
 
       function updateTimelinePreview() {
-        const payload = collectPayload();
-        google.script.run
-          .withSuccessHandler(renderTimeline)
-          .withFailureHandler(handleError)
-          .previewTimeline(payload);
+        if (state.timelinePreviewTimer) {
+          clearTimeout(state.timelinePreviewTimer);
+        }
+
+        state.timelinePreviewTimer = setTimeout(() => {
+          const payload = collectPayload();
+          if (!payload.district) {
+            renderTimeline({});
+            return;
+          }
+
+          google.script.run
+            .withSuccessHandler(renderTimeline)
+            .withFailureHandler(handleError)
+            .previewTimeline(payload);
+        }, 150);
       }
 
       function renderTimeline(timeline) {

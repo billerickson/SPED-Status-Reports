@@ -95,11 +95,12 @@ function onOpen() {
 }
 
 function installSpedStatusReports() {
-  ensureWorkbookScaffold_();
-  seedReferenceData_();
-  syncDistrictCalendarSheet_();
-  showAllSheets_();
-  applyAllSheetProtections_();
+  ensureWorkbookScaffold_({
+    seedReferenceData: true,
+    syncCalendar: true,
+    showSheets: true,
+    applyProtection: true,
+  });
   refreshDashboard();
   SpreadsheetApp.getUi().alert(
     'SPED Status Reports is ready. Sheets are visible, and direct edits are restricted to configured admin accounts. Update the sample district, campus, evaluator, calendar, and admin settings before production use.'
@@ -202,7 +203,6 @@ function saveNewCase(payload) {
   lock.waitLock(30000);
 
   try {
-    ensureWorkbookScaffold_();
     validatePayload_(payload, false);
 
     if (duplicateOpenCaseExists_(payload.studentId, payload.caseType)) {
@@ -235,7 +235,6 @@ function updateExistingCase(payload) {
   lock.waitLock(30000);
 
   try {
-    ensureWorkbookScaffold_();
     validatePayload_(payload, true);
 
     const existing = findCaseRow_(payload.caseId);
@@ -417,7 +416,14 @@ function refreshDashboard() {
   sheet.autoResizeColumns(1, headers.length);
 }
 
-function ensureWorkbookScaffold_() {
+function ensureWorkbookScaffold_(options) {
+  const settings = Object.assign({
+    seedReferenceData: false,
+    syncCalendar: false,
+    showSheets: false,
+    applyProtection: false,
+  }, options || {});
+
   ensureSheet_(SHEETS.cases, CASE_HEADERS);
   ensureSheet_(SHEETS.documents, DOCUMENT_HEADERS);
   ensureSheet_(SHEETS.districts, DISTRICT_HEADERS);
@@ -425,9 +431,22 @@ function ensureWorkbookScaffold_() {
   ensureSheet_(SHEETS.evaluators, EVALUATOR_HEADERS);
   ensureSheet_(SHEETS.calendars, CALENDAR_BASE_HEADERS);
   ensureSheet_(SHEETS.dashboard, ['SPED Status Reports Dashboard']);
-  syncDistrictCalendarSheet_();
-  showAllSheets_();
-  applyAllSheetProtections_();
+
+  if (settings.seedReferenceData) {
+    seedReferenceData_();
+  }
+
+  if (settings.syncCalendar) {
+    syncDistrictCalendarSheet_();
+  }
+
+  if (settings.showSheets) {
+    showAllSheets_();
+  }
+
+  if (settings.applyProtection) {
+    applyAllSheetProtections_();
+  }
 }
 
 function ensureSheet_(sheetName, headers) {
@@ -772,6 +791,7 @@ function buildProjectedDates_(input) {
   const actualConsentDate = parseDate_(input.actualConsentDate);
   const actualFiiEDate = parseDate_(input.actualFIIEDate);
   const reevalDueDate = parseDate_(input.reevalDueDate);
+  const calendarLookup = district ? getDistrictCalendarLookup_(district) : {};
 
   const timeline = {
     responseDueDate: '',
@@ -785,9 +805,9 @@ function buildProjectedDates_(input) {
     const fiieDays = getDistrictRule_(district, 'FIIESchoolDays', 45);
     const ardDays = getDistrictRule_(district, 'ARDCalendarDays', 30);
 
-    const responseDueDate = addInstructionalDays_(referralDate, responseDays, district);
+    const responseDueDate = addInstructionalDays_(referralDate, responseDays, district, calendarLookup);
     const consentAnchor = actualConsentDate || responseDueDate;
-    const fiiEDueDate = addInstructionalDays_(consentAnchor, fiieDays, district);
+    const fiiEDueDate = calculateInitialFiiEDueDate_(consentAnchor, district, fiieDays, calendarLookup);
     const ardAnchor = actualFiiEDate || fiiEDueDate;
 
     timeline.responseDueDate = responseDueDate;
@@ -814,19 +834,19 @@ function getDistrictRule_(districtName, ruleColumn, fallbackValue) {
   return Number(row[ruleColumn]) || fallbackValue;
 }
 
-function addInstructionalDays_(startDate, daysToAdd, districtName) {
+function addInstructionalDays_(startDate, daysToAdd, districtName, calendarLookup) {
   let cursor = new Date(startDate);
   let counted = 0;
-  const calendarLookup = getDistrictCalendarLookup_(districtName);
+  const lookup = calendarLookup || getDistrictCalendarLookup_(districtName);
 
   while (counted < Number(daysToAdd)) {
     cursor = addCalendarDays_(cursor, 1);
-    if (isInstructionalDay_(cursor, districtName, calendarLookup)) {
+    if (isInstructionalDay_(cursor, districtName, lookup)) {
       counted += 1;
     }
   }
 
-  return cursor;
+  return normalizeDateForStorage_(cursor);
 }
 
 function isInstructionalDay_(dateValue, districtName, calendarLookup) {
@@ -877,7 +897,63 @@ function getDistrictCalendarLookup_(districtName) {
 function addCalendarDays_(dateValue, dayCount) {
   const output = new Date(dateValue);
   output.setDate(output.getDate() + Number(dayCount));
-  return output;
+  return normalizeDateForStorage_(output);
+}
+
+function calculateInitialFiiEDueDate_(consentDate, districtName, fiieDays, calendarLookup) {
+  const lookup = calendarLookup || getDistrictCalendarLookup_(districtName);
+  const lastInstructionalDay = getLastInstructionalDayOfSchoolYear_(consentDate, districtName, lookup);
+  const june30DueDate = getJune30ForSchoolYear_(consentDate);
+
+  if (lastInstructionalDay) {
+    const remainingInstructionalDays = countInstructionalDaysBetween_(consentDate, lastInstructionalDay, districtName, lookup);
+    if (remainingInstructionalDays >= 35 && remainingInstructionalDays < 45) {
+      return june30DueDate;
+    }
+  }
+
+  return addInstructionalDays_(consentDate, fiieDays, districtName, lookup);
+}
+
+function countInstructionalDaysBetween_(startDate, endDate, districtName, calendarLookup) {
+  let cursor = normalizeDateForStorage_(startDate);
+  const normalizedEndDate = normalizeDateForStorage_(endDate);
+  let counted = 0;
+
+  while (cursor < normalizedEndDate) {
+    cursor = addCalendarDays_(cursor, 1);
+    if (cursor <= normalizedEndDate && isInstructionalDay_(cursor, districtName, calendarLookup)) {
+      counted += 1;
+    }
+  }
+
+  return counted;
+}
+
+function getLastInstructionalDayOfSchoolYear_(referenceDate, districtName, calendarLookup) {
+  let cursor = getSchoolYearInstructionEndDate_(referenceDate);
+  const normalizedReferenceDate = normalizeDateForStorage_(referenceDate);
+
+  while (cursor >= normalizedReferenceDate) {
+    if (isInstructionalDay_(cursor, districtName, calendarLookup)) {
+      return cursor;
+    }
+    cursor = addCalendarDays_(cursor, -1);
+  }
+
+  return '';
+}
+
+function getSchoolYearInstructionEndDate_(referenceDate) {
+  const normalizedDate = normalizeDateForStorage_(referenceDate);
+  const endYear = normalizedDate.getMonth() >= 6 ? normalizedDate.getFullYear() + 1 : normalizedDate.getFullYear();
+  return createLocalDate_(endYear, 6, 1);
+}
+
+function getJune30ForSchoolYear_(referenceDate) {
+  const normalizedDate = normalizeDateForStorage_(referenceDate);
+  const dueYear = normalizedDate.getMonth() >= 6 ? normalizedDate.getFullYear() + 1 : normalizedDate.getFullYear();
+  return createLocalDate_(dueYear, 6, 30);
 }
 
 function determineStatus_(actualConsentDate, actualArdDate) {
@@ -1045,10 +1121,21 @@ function parseDate_(value) {
     return '';
   }
   if (Object.prototype.toString.call(value) === '[object Date]' && !Number.isNaN(value.getTime())) {
-    return value;
+    return normalizeDateForStorage_(value);
+  }
+  if (typeof value === 'string') {
+    const isoMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (isoMatch) {
+      return createLocalDate_(Number(isoMatch[1]), Number(isoMatch[2]), Number(isoMatch[3]));
+    }
+
+    const slashMatch = value.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (slashMatch) {
+      return createLocalDate_(Number(slashMatch[3]), Number(slashMatch[1]), Number(slashMatch[2]));
+    }
   }
   const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? '' : parsed;
+  return Number.isNaN(parsed.getTime()) ? '' : normalizeDateForStorage_(parsed);
 }
 
 function formatDate_(value) {
@@ -1082,6 +1169,14 @@ function isWeekend_(dateValue) {
 
 function isoDateKey_(dateValue) {
   return Utilities.formatDate(dateValue, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+}
+
+function createLocalDate_(year, month, day) {
+  return new Date(year, month - 1, day, 12, 0, 0, 0);
+}
+
+function normalizeDateForStorage_(dateValue) {
+  return new Date(dateValue.getFullYear(), dateValue.getMonth(), dateValue.getDate(), 12, 0, 0, 0);
 }
 
 function normalizeStudentId_(value) {
