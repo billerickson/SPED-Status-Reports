@@ -62,10 +62,10 @@ Use these sheets for each type of maintenance:
   - one row per evaluator
   - set `Active = Yes` for evaluators that should appear in dropdowns
 - `ServiceContacts`
-  - one row per service area
-  - use `EmailTo` for milestone update recipients for that service
+  - one row per `District + Service` combination
+  - use `EmailTo` for milestone update recipients for that district/service
   - use `EmailCc` for optional copied recipients
-  - set `Active = Yes` for service groups that should receive automatic milestone updates
+  - set `Active = Yes` for district/service groups that should receive automatic milestone updates
 - `DistrictCalendars`
 - `Settings`
   - v2 communication settings also live here:
@@ -195,19 +195,21 @@ The manual v2 communication tools are intentionally conservative:
 Automatic email notifications are a separate v2 workflow:
 - new referral assignment emails can auto-send on case creation
 - milestone update emails can auto-send on case update
-- these use Settings plus the `ServiceContacts` sheet
+- these use Settings plus the district-aware `ServiceContacts` sheet
 
 Before using v2:
 1. Open `Settings`.
 2. Set `AutoSendNewReferralAssignments = Yes` if new case creation should email the assignment group automatically.
 3. Fill in `NewReferralAssignmentTo` and optional `NewReferralAssignmentCc`.
 4. Set `AutoSendMilestoneUpdates = Yes` if case milestone updates should email the checked service contacts automatically.
-5. Open `ServiceContacts` and fill in the email groups for each service area.
+5. Open `ServiceContacts` and fill in the email groups for each `District + Service` row.
 6. Fill in `NotificationEmailTo` with the default recipients for manual draft creation.
 7. Optional: fill in CC, BCC, reply-to, sender name, and Gmail alias settings.
 8. Optional: fill in `NotificationCalendarId` if events should go to a dedicated SPED calendar.
    If left blank, events go to the authorized user's default calendar.
 9. Save the settings and reauthorize the script if prompted.
+
+If you already had an older `ServiceContacts` sheet, run `Install / Repair Workbook` once after pasting this update so the `District` column is added and preserved correctly.
 
 Available v2 case actions:
 - `Due Soon Draft`
@@ -225,7 +227,7 @@ Each v2 action also writes an entry to `AuditLog`.
 
 Automatic email behavior:
 - a new `Initial` case save can automatically send a referral assignment email to the configured assignment group
-- an update save can automatically send a milestone update email to all active `ServiceContacts` rows that match checked services on the case
+- an update save can automatically send a milestone update email to all active `ServiceContacts` rows that match both the case district and the checked services on the case
 - case saves still complete even if an automatic email cannot be sent; the app shows a warning and logs the failure in `AuditLog`
 
 To manage saved dashboard views:

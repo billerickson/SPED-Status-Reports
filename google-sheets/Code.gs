@@ -86,7 +86,7 @@ const CASE_HEADERS = [
 const DOCUMENT_HEADERS = ['DocumentID', 'CaseID', 'DocumentLabel', 'DocumentPath', 'AddedAt'];
 const ARCHIVE_HEADERS = CASE_HEADERS.concat(['ArchivedAt']);
 const VIEW_HEADERS = ['ViewName', 'District', 'Evaluator', 'CaseType', 'Status', 'DeadlineBucket', 'Active', 'Description'];
-const SERVICE_CONTACT_HEADERS = ['ServiceField', 'ServiceLabel', 'EmailTo', 'EmailCc', 'Active'];
+const SERVICE_CONTACT_HEADERS = ['District', 'ServiceField', 'ServiceLabel', 'EmailTo', 'EmailCc', 'Active'];
 const TEST_HEADERS = [
   'ScenarioName',
   'CaseType',
@@ -960,17 +960,18 @@ function getServiceRecipientsForCase_(row) {
   const contacts = getActiveServiceContacts_();
   const toSet = new Set();
   const ccSet = new Set();
+  const districtName = normalizeComparisonText_(row.District);
 
   SERVICE_FIELDS.forEach((field) => {
     if (Number(row[field]) !== 1) {
       return;
     }
-    const contact = contacts.find((item) => item.ServiceField === field);
-    if (!contact) {
-      return;
-    }
-    splitEmails_(contact.EmailTo).forEach((email) => toSet.add(email));
-    splitEmails_(contact.EmailCc).forEach((email) => ccSet.add(email));
+    contacts
+      .filter((item) => normalizeComparisonText_(item.District) === districtName && item.ServiceField === field)
+      .forEach((contact) => {
+        splitEmails_(contact.EmailTo).forEach((email) => toSet.add(email));
+        splitEmails_(contact.EmailCc).forEach((email) => ccSet.add(email));
+      });
   });
 
   const to = [...toSet].filter(Boolean);
@@ -1765,16 +1766,26 @@ function seedServiceContacts_() {
     return;
   }
 
-  const rows = SERVICE_FIELDS.map((field) => ({
-    ServiceField: field,
-    ServiceLabel: SERVICE_LABELS[field] || field,
-    EmailTo: '',
-    EmailCc: '',
-    Active: 'Yes',
-  }));
+  const districts = getActiveColumnValues_(SHEETS.districts, 'District');
+  const rows = [];
+
+  districts.forEach((districtName) => {
+    SERVICE_FIELDS.forEach((field) => {
+      rows.push({
+        District: districtName,
+        ServiceField: field,
+        ServiceLabel: SERVICE_LABELS[field] || field,
+        EmailTo: '',
+        EmailCc: '',
+        Active: 'Yes',
+      });
+    });
+  });
 
   const values = rows.map((row) => SERVICE_CONTACT_HEADERS.map((header) => (row[header] === undefined ? '' : row[header])));
-  sheet.getRange(2, 1, values.length, SERVICE_CONTACT_HEADERS.length).setValues(values);
+  if (values.length) {
+    sheet.getRange(2, 1, values.length, SERVICE_CONTACT_HEADERS.length).setValues(values);
+  }
 }
 
 function seedSavedViews_() {
