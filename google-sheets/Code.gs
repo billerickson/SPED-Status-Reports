@@ -14,6 +14,8 @@ const SHEETS = {
   settings: 'Settings',
   audit: 'AuditLog',
   dashboard: 'Dashboard',
+  summaryCaseType: 'SummaryByCaseType',
+  summaryEvaluator: 'SummaryByEvaluator',
 };
 
 const CASE_TYPES = {
@@ -121,6 +123,8 @@ function onOpen() {
     .addItem('Open Settings (Admin)', 'openSettingsSheet')
     .addItem('Open Audit Log (Admin)', 'openAuditSheet')
     .addItem('Open Archive (Admin)', 'openArchiveSheet')
+    .addItem('Open Case Type Summary', 'openCaseTypeSummarySheet')
+    .addItem('Open Evaluator Summary', 'openEvaluatorSummarySheet')
     .addItem('Archive Completed Cases (Admin)', 'archiveCompletedCases')
     .addItem('Sync Calendar Grid', 'syncDistrictCalendarGrid')
     .addItem('Reapply Admin Sheet Protection', 'reapplyAdminSheetProtection')
@@ -423,6 +427,20 @@ function openArchiveSheet(adminCode) {
   openAdminSheet_(SHEETS.archive, adminCode);
 }
 
+function openCaseTypeSummarySheet() {
+  const sheet = SpreadsheetApp.getActive().getSheetByName(SHEETS.summaryCaseType);
+  if (sheet) {
+    SpreadsheetApp.getActive().setActiveSheet(sheet);
+  }
+}
+
+function openEvaluatorSummarySheet() {
+  const sheet = SpreadsheetApp.getActive().getSheetByName(SHEETS.summaryEvaluator);
+  if (sheet) {
+    SpreadsheetApp.getActive().setActiveSheet(sheet);
+  }
+}
+
 function archiveCompletedCases(adminCode) {
   let resolvedCode = adminCode;
   if (!resolvedCode) {
@@ -509,6 +527,22 @@ function refreshDashboard_(applyLayout) {
       applyProtection_(districtSheet);
     }
   });
+
+  renderSummarySheet_(
+    ss.getSheetByName(SHEETS.summaryCaseType),
+    'Summary By Case Type',
+    'Active case summary split by Initial and Re-evaluation.',
+    getCaseTypeSummaryRows_(cases),
+    applyLayout
+  );
+
+  renderSummarySheet_(
+    ss.getSheetByName(SHEETS.summaryEvaluator),
+    'Summary By Evaluator',
+    'Active case summary split by evaluator.',
+    getEvaluatorSummaryRows_(cases),
+    applyLayout
+  );
 }
 
 function renderDashboardSheet_(sheet, title, subtitle, cases, documentsByCase, applyLayout) {
@@ -611,6 +645,93 @@ function getDashboardSummary_(cases) {
   };
 }
 
+function renderSummarySheet_(sheet, title, subtitle, rows, applyLayout) {
+  const headers = ['Breakdown', 'Total Active', 'Overdue', 'Due This Week', 'Due This Month', 'Completed'];
+  const headerRow = 4;
+  const dataStartRow = 5;
+
+  if (applyLayout || sheet.getRange(headerRow, 1).getValue() !== headers[0]) {
+    sheet.clear();
+    sheet.getRange(1, 1).setValue(title).setFontWeight('bold').setFontSize(16);
+    sheet.getRange(2, 1).setValue(subtitle);
+    sheet.setFrozenRows(headerRow);
+  } else if (sheet.getLastRow() >= dataStartRow) {
+    sheet.getRange(dataStartRow, 1, sheet.getLastRow() - dataStartRow + 1, headers.length).clearContent().setBackground('#ffffff');
+  }
+
+  sheet.getRange(headerRow, 1, 1, headers.length).setValues([headers]).setFontWeight('bold');
+
+  if (rows.length) {
+    const values = rows.map((row) => [
+      row.label,
+      row.totalActive,
+      row.overdue,
+      row.dueThisWeek,
+      row.dueThisMonth,
+      row.completed,
+    ]);
+    sheet.getRange(dataStartRow, 1, values.length, headers.length).setValues(values);
+    sheet.getRange(dataStartRow, 2, values.length, headers.length - 1).setNumberFormat('0');
+    applySummarySheetFormatting_(sheet, dataStartRow, rows.length, headers.length);
+  }
+
+  if (sheet.getFilter()) {
+    sheet.getFilter().remove();
+  }
+  sheet.getRange(headerRow, 1, Math.max(rows.length + 1, 2), headers.length).createFilter();
+  if (applyLayout) {
+    sheet.autoResizeColumns(1, headers.length);
+  }
+}
+
+function getCaseTypeSummaryRows_(cases) {
+  return [
+    buildSummaryRow_('Initial', cases.filter((row) => row.CaseType === CASE_TYPES.initial)),
+    buildSummaryRow_('Re-evaluation', cases.filter((row) => row.CaseType === CASE_TYPES.reevaluation)),
+  ];
+}
+
+function getEvaluatorSummaryRows_(cases) {
+  const evaluatorNames = [...new Set(cases.map((row) => String(row.LeadEvaluator || '').trim()).filter(Boolean))].sort();
+  return evaluatorNames.map((evaluatorName) => (
+    buildSummaryRow_(evaluatorName, cases.filter((row) => String(row.LeadEvaluator || '').trim() === evaluatorName))
+  ));
+}
+
+function buildSummaryRow_(label, cases) {
+  const summary = getDashboardSummary_(cases);
+  return {
+    label,
+    totalActive: summary.totalActive,
+    overdue: summary.overdue,
+    dueThisWeek: summary.dueThisWeek,
+    dueThisMonth: summary.dueThisMonth,
+    completed: summary.completed,
+  };
+}
+
+function applySummarySheetFormatting_(sheet, startRow, rowCount, columnCount) {
+  const range = sheet.getRange(startRow, 1, rowCount, columnCount);
+  const values = range.getValues();
+  const backgrounds = values.map((row) => {
+    const output = new Array(columnCount).fill('#ffffff');
+    if (Number(row[2]) > 0) {
+      output[2] = getSettingValue_('RedDeadlineColor', '#ff9999');
+    }
+    if (Number(row[3]) > 0) {
+      output[3] = '#fff2cc';
+    }
+    if (Number(row[4]) > 0) {
+      output[4] = getSettingValue_('PinkDeadlineColor', '#f4cccc');
+    }
+    if (Number(row[5]) > 0) {
+      output[5] = '#d9ead3';
+    }
+    return output;
+  });
+  range.setBackgrounds(backgrounds);
+}
+
 function getDashboardHeaders_() {
   return [
     'Case ID',
@@ -709,6 +830,8 @@ function ensureWorkbookScaffold_(options) {
   ensureSheet_(SHEETS.settings, SETTINGS_HEADERS);
   ensureSheet_(SHEETS.audit, AUDIT_HEADERS);
   ensureSheet_(SHEETS.dashboard, ['SPED Status Reports Dashboard']);
+  ensureSheet_(SHEETS.summaryCaseType, ['Summary By Case Type']);
+  ensureSheet_(SHEETS.summaryEvaluator, ['Summary By Evaluator']);
 
   if (settings.seedReferenceData) {
     seedReferenceData_();

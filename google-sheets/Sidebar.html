@@ -386,6 +386,10 @@
           <button class="secondary" onclick="runOpenAdminSheet('archive')">Open Archive</button>
           <button class="secondary" onclick="runAdminAction('archive')">Archive Completed</button>
         </div>
+        <div class="row">
+          <button class="secondary" onclick="runOpenAdminSheet('summaryCaseType')">Open Case Type Summary</button>
+          <button class="secondary" onclick="runOpenAdminSheet('summaryEvaluator')">Open Evaluator Summary</button>
+        </div>
       </div>
     </div>
 
@@ -848,6 +852,8 @@
           settings: 'openSettingsSheet',
           audit: 'openAuditSheet',
           archive: 'openArchiveSheet',
+          summaryCaseType: 'openCaseTypeSummarySheet',
+          summaryEvaluator: 'openEvaluatorSummarySheet',
         };
         const adminCode = document.getElementById('adminCode').value;
         google.script.run

@@ -7,6 +7,7 @@
 - lightweight `Settings` sheet for warning window, timeline colors, and optional uploads folder override
 - dashboard summary cards for `Total Active`, `Overdue`, `Due This Week`, `Due This Month`, and `Completed`
 - admin archive flow with `ArchiveCases`
+- summary report sheets by case type and by evaluator
 
 ## Recommended Next
 - add direct dashboard links or buttons to open a case from the sidebar by `Case ID`
