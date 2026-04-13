@@ -821,11 +821,11 @@ function createCaseEmailDraft(caseId, draftType) {
 
 function sendNewReferralAssignmentNotifications_(row) {
   if (row.CaseType !== CASE_TYPES.initial) {
-    return [];
+    return logNotificationSkip_(row.CaseID, 'NewReferralAssignment', 'Not an Initial case.');
   }
   const emailConfig = getEmailIntegrationConfig_();
   if (!emailConfig.autoSendNewReferralAssignments) {
-    return [];
+    return logNotificationSkip_(row.CaseID, 'NewReferralAssignment', 'AutoSendNewReferralAssignments is not enabled.');
   }
 
   const subject = `New SPED Referral Assignment: ${row.StudentName} (${row.CaseID})`;
@@ -865,7 +865,11 @@ function sendNewReferralAssignmentNotifications_(row) {
     emailConfig.includeLeadEvaluatorOnNewAssignments ? getEvaluatorEmailByName_(row.LeadEvaluator) : ''
   );
   if (!recipients.to) {
-    return ['Automatic new referral assignment email skipped because no assignment recipients or lead evaluator email were available for this case.'];
+    return logNotificationSkip_(
+      row.CaseID,
+      'NewReferralAssignment',
+      `No assignment recipients or lead evaluator email were available. Resolved To="${recipients.to}" Cc="${recipients.cc}".`
+    );
   }
   return sendCaseNotificationEmail_(row.CaseID, 'NewReferralAssignment', recipients.to, recipients.cc, subject, plainBody, htmlBody);
 }
@@ -873,13 +877,13 @@ function sendNewReferralAssignmentNotifications_(row) {
 function sendMilestoneUpdateNotifications_(existingRow, updatedRow) {
   const emailConfig = getEmailIntegrationConfig_();
   if (!emailConfig.autoSendMilestoneUpdates) {
-    return [];
+    return logNotificationSkip_(updatedRow.CaseID, 'MilestoneUpdate', 'AutoSendMilestoneUpdates is not enabled.');
   }
 
   const changedMilestones = getChangedMilestoneFields_(existingRow, updatedRow);
   const statusChanged = String(existingRow.Status || '') !== String(updatedRow.Status || '');
   if (!changedMilestones.length && !statusChanged) {
-    return [];
+    return logNotificationSkip_(updatedRow.CaseID, 'MilestoneUpdate', 'No milestone or status change was detected for this save.');
   }
 
   const recipientGroups = getServiceRecipientsForCase_(updatedRow);
@@ -889,7 +893,11 @@ function sendMilestoneUpdateNotifications_(existingRow, updatedRow) {
     emailConfig.includeLeadEvaluatorOnMilestoneUpdates ? getEvaluatorEmailByName_(updatedRow.LeadEvaluator) : ''
   );
   if (!recipients.to) {
-    return ['Automatic case update email skipped because no active service contact or lead evaluator email was available for this case.'];
+    return logNotificationSkip_(
+      updatedRow.CaseID,
+      statusChanged ? 'StatusUpdate' : 'MilestoneUpdate',
+      `No active service contact or lead evaluator email was available. Resolved To="${recipients.to}" Cc="${recipients.cc}".`
+    );
   }
 
   const subject = statusChanged
@@ -940,6 +948,13 @@ function sendMilestoneUpdateNotifications_(existingRow, updatedRow) {
   ].join('');
 
   return sendCaseNotificationEmail_(updatedRow.CaseID, statusChanged ? 'StatusUpdate' : 'MilestoneUpdate', recipients.to, recipients.cc, subject, plainBody, htmlBody);
+}
+
+function logNotificationSkip_(caseId, actionLabel, reason) {
+  appendAuditRows_([
+    buildAuditRow_(caseId, 'EmailSkip', actionLabel, '', reason),
+  ]);
+  return [`Automatic email skipped for ${actionLabel}: ${reason}`];
 }
 
 function sendCaseNotificationEmail_(caseId, actionLabel, toRecipients, ccRecipients, subject, plainBody, htmlBody) {
