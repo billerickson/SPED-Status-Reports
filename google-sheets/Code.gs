@@ -146,6 +146,7 @@ function onOpen() {
     .addItem('Refresh Dashboard', 'refreshDashboard')
     .addItem('Open Dashboard', 'openDashboard')
     .addItem('Open Selected Case', 'openSelectedCaseFromActiveRow')
+    .addItem('Send Test Notification For Selected Case', 'sendTestNotificationForSelectedCase')
     .addItem('Create Due Soon Draft For Selected Case', 'createDueSoonDraftForSelectedCase')
     .addItem('Create Overdue Draft For Selected Case', 'createOverdueDraftForSelectedCase')
     .addItem('Create ARD Event For Selected Case', 'createArdEventForSelectedCase')
@@ -564,6 +565,19 @@ function createDueSoonDraftForSelectedCase() {
   }
   const result = createCaseEmailDraft(selection.caseId, 'dueSoon');
   SpreadsheetApp.getUi().alert(`Draft created: ${result.subject}`);
+  return result;
+}
+
+function sendTestNotificationForSelectedCase() {
+  resetRequestCache_();
+  const selection = getSelectedCaseReference_();
+  if (!selection || selection.location !== 'active') {
+    throw new Error('Select a case row from Cases or a dashboard first.');
+  }
+  const result = sendNotificationTest_(selection.caseId);
+  SpreadsheetApp.getUi().alert(
+    `Notification test complete for ${selection.caseId}.\n\nResolved To: ${result.to || '(none)'}\nResolved Cc: ${result.cc || '(none)'}\nResult: ${(result.result || []).join('\n') || 'Email send attempted.'}`
+  );
   return result;
 }
 
@@ -1017,6 +1031,8 @@ function getServiceRecipientsForCase_(row) {
 
 function splitEmails_(value) {
   return String(value || '')
+    .replace(/[\r\n]+/g, ',')
+    .replace(/;/g, ',')
     .split(',')
     .map((email) => email.trim())
     .filter(Boolean);
@@ -1036,6 +1052,67 @@ function mergeNotificationRecipients_(toRecipients, ccRecipients, preferredToEma
     to: [...toSet].join(','),
     cc: [...ccSet].filter((email) => !toSet.has(email)).join(','),
   };
+}
+
+function sendNotificationTest_(caseId) {
+  const record = findCaseRecord_(caseId);
+  if (!record) {
+    throw new Error(`Case not found: ${caseId}`);
+  }
+
+  const row = record.row;
+  const emailConfig = getEmailIntegrationConfig_();
+  const recipientGroups = getServiceRecipientsForCase_(row);
+  const recipients = mergeNotificationRecipients_(
+    recipientGroups.to,
+    recipientGroups.cc,
+    emailConfig.includeLeadEvaluatorOnMilestoneUpdates ? getEvaluatorEmailByName_(row.LeadEvaluator) : ''
+  );
+
+  if (!recipients.to) {
+    const result = logNotificationSkip_(
+      row.CaseID,
+      'NotificationTest',
+      `No active service contact or lead evaluator email was available. Resolved To="${recipients.to}" Cc="${recipients.cc}".`
+    );
+    return toHtmlSafeObject_({
+      caseId,
+      to: recipients.to,
+      cc: recipients.cc,
+      result,
+    });
+  }
+
+  const subject = `SPED Notification Test: ${row.StudentName} (${row.CaseID})`;
+  const plainBody = [
+    'This is a test notification from SPED Status Reports.',
+    '',
+    `Student: ${row.StudentName}`,
+    `Case ID: ${row.CaseID}`,
+    `Case Type: ${row.CaseType}`,
+    `District: ${row.District}`,
+    `Lead Evaluator: ${row.LeadEvaluator}`,
+    `Status: ${row.Status}`,
+  ].join('\n');
+  const htmlBody = [
+    '<p>This is a test notification from <strong>SPED Status Reports</strong>.</p>',
+    '<table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse;">',
+    `<tr><th align="left">Student</th><td>${escapeHtml_(row.StudentName)}</td></tr>`,
+    `<tr><th align="left">Case ID</th><td>${escapeHtml_(row.CaseID)}</td></tr>`,
+    `<tr><th align="left">Case Type</th><td>${escapeHtml_(row.CaseType)}</td></tr>`,
+    `<tr><th align="left">District</th><td>${escapeHtml_(row.District)}</td></tr>`,
+    `<tr><th align="left">Lead Evaluator</th><td>${escapeHtml_(row.LeadEvaluator)}</td></tr>`,
+    `<tr><th align="left">Status</th><td>${escapeHtml_(row.Status)}</td></tr>`,
+    '</table>',
+  ].join('');
+  const result = sendCaseNotificationEmail_(row.CaseID, 'NotificationTest', recipients.to, recipients.cc, subject, plainBody, htmlBody);
+
+  return toHtmlSafeObject_({
+    caseId,
+    to: recipients.to,
+    cc: recipients.cc,
+    result,
+  });
 }
 
 function getChangedMilestoneFields_(existingRow, updatedRow) {
@@ -1700,7 +1777,11 @@ function getSettingValue_(settingKey, fallbackValue) {
 
 function isEnabledSetting_(settingKey, fallbackValue) {
   const normalized = String(getSettingValue_(settingKey, fallbackValue) || '').trim().toLowerCase();
-  return ['yes', 'true', '1', 'on'].includes(normalized);
+  return isTruthyText_(normalized);
+}
+
+function isTruthyText_(value) {
+  return ['yes', 'true', '1', 'on'].includes(String(value || '').trim().toLowerCase());
 }
 
 function getNumericSetting_(settingKey, fallbackValue) {
@@ -1996,7 +2077,7 @@ function getActiveServiceContacts_() {
     return REQUEST_CACHE.serviceContacts;
   }
   const rows = getTableRows_(SHEETS.serviceContacts, SERVICE_CONTACT_HEADERS)
-    .filter((row) => String(row.Active || '').toLowerCase() === 'yes');
+    .filter((row) => isTruthyText_(row.Active));
   REQUEST_CACHE.serviceContacts = rows;
   return rows;
 }
@@ -2344,7 +2425,7 @@ function refreshSavedViews_(applyLayout, cases, documentsByCase) {
 
 function getActiveSavedViews_() {
   return getTableRows_(SHEETS.views, VIEW_HEADERS)
-    .filter((row) => String(row.Active || '').toLowerCase() === 'yes')
+    .filter((row) => isTruthyText_(row.Active))
     .filter((row) => String(row.ViewName || '').trim());
 }
 
@@ -2436,7 +2517,7 @@ function getActiveRows_(sheetName) {
     return REQUEST_CACHE.activeRows[sheetName];
   }
   const headers = sheetName === SHEETS.campuses ? CAMPUS_HEADERS : sheetName === SHEETS.evaluators ? EVALUATOR_HEADERS : DISTRICT_HEADERS;
-  const rows = getTableRows_(sheetName, headers).filter((row) => String(row.Active).toLowerCase() === 'yes');
+  const rows = getTableRows_(sheetName, headers).filter((row) => isTruthyText_(row.Active));
   REQUEST_CACHE.activeRows[sheetName] = rows;
   return rows;
 }

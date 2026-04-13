@@ -65,6 +65,7 @@ Use these sheets for each type of maintenance:
   - one row per `District + Service` combination
   - use `EmailTo` for milestone update recipients for that district/service
   - use `EmailCc` for optional copied recipients
+  - recipient lists can be separated by commas, semicolons, or line breaks
   - set `Active = Yes` for district/service groups that should receive automatic milestone updates
 - `DistrictCalendars`
 - `Settings`
@@ -216,12 +217,14 @@ Before using v2:
 If you already had an older `ServiceContacts` sheet, run `Install / Repair Workbook` once after pasting this update so the `District` column is added and preserved correctly.
 
 Available v2 case actions:
+- `Send Test Notification For Selected Case`
 - `Due Soon Draft`
 - `Overdue Draft`
 - `Create ARD Event`
 - `Deadline Reminder`
 
 How they work:
+- `Send Test Notification For Selected Case` resolves the same service-team and lead-evaluator recipients used by milestone updates and attempts a live email send for the selected case row
 - `Due Soon Draft` creates a Gmail draft using the case's current primary deadline.
 - `Overdue Draft` creates a Gmail draft using the same case details but with overdue language.
 - `Create ARD Event` uses `ARD Scheduled Date` and the configured ARD hour/duration settings.
