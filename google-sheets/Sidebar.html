@@ -427,6 +427,10 @@
           <button class="secondary" onclick="runOpenAdminSheet('tests')">Open Due Date Tests</button>
         </div>
         <div class="row">
+          <button class="secondary" onclick="runOpenAdminSheet('views')">Open Dashboard Views</button>
+          <button class="secondary" onclick="runAdminAction('refreshViews')">Refresh Saved Views</button>
+        </div>
+        <div class="row">
           <button class="secondary" onclick="runOpenAdminSheet('archive')">Open Archive</button>
           <button class="secondary" onclick="runAdminAction('archive')">Archive Completed</button>
           <button class="secondary" onclick="runAdminAction('restoreArchive')">Restore Selected Archive Row</button>
@@ -971,12 +975,21 @@
           protect: 'applyAdminSheetProtection',
           archive: 'archiveCompletedCases',
           restoreArchive: 'restoreSelectedArchivedCase',
+          refreshViews: 'refreshSavedViews',
         };
         const call = actions[action];
         google.script.run
           .withSuccessHandler((result) => {
             if (action === 'archive') {
               setStatus(`${result || 0} completed case(s) archived.`, 'success');
+              return;
+            }
+            if (action === 'restoreArchive' && !result) {
+              setStatus('Restore canceled.', 'success');
+              return;
+            }
+            if (action === 'refreshViews') {
+              setStatus('Saved views refreshed.', 'success');
               return;
             }
             setStatus('Admin action completed.', 'success');
@@ -995,6 +1008,7 @@
           audit: 'openAuditSheet',
           archive: 'openArchiveSheet',
           tests: 'openDueDateTestsSheet',
+          views: 'openDashboardViewsSheet',
           summaryDistrictCaseType: 'openDistrictCaseTypeSummarySheet',
           summaryCaseType: 'openCaseTypeSummarySheet',
           summaryEvaluator: 'openEvaluatorSummarySheet',

@@ -2,6 +2,7 @@ const ADMIN_ACCESS_CODE = 'CHANGE_ME_BEFORE_PRODUCTION';
 const ADMIN_EDITOR_EMAILS = [];
 const UPLOADS_FOLDER_ID = '';
 const DISTRICT_DASHBOARD_PREFIX = 'Dashboard - ';
+const SAVED_VIEW_PREFIX = 'View - ';
 const DOCUMENT_PROPERTIES = {
   pendingCaseId: 'SPED_PENDING_CASE_ID',
 };
@@ -11,6 +12,7 @@ const SHEETS = {
   archive: 'ArchiveCases',
   documents: 'CaseDocuments',
   tests: 'DueDateTests',
+  views: 'DashboardViews',
   districts: 'Districts',
   campuses: 'Campuses',
   evaluators: 'Evaluators',
@@ -81,6 +83,7 @@ const CASE_HEADERS = [
 
 const DOCUMENT_HEADERS = ['DocumentID', 'CaseID', 'DocumentLabel', 'DocumentPath', 'AddedAt'];
 const ARCHIVE_HEADERS = CASE_HEADERS.concat(['ArchivedAt']);
+const VIEW_HEADERS = ['ViewName', 'District', 'Evaluator', 'CaseType', 'Status', 'DeadlineBucket', 'Active', 'Description'];
 const TEST_HEADERS = [
   'ScenarioName',
   'CaseType',
@@ -146,6 +149,7 @@ function onOpen() {
     .addItem('Open Evaluators (Admin)', 'openEvaluatorsSheet')
     .addItem('Open Calendars (Admin)', 'openCalendarsSheet')
     .addItem('Open Due Date Tests (Admin)', 'openDueDateTestsSheet')
+    .addItem('Open Dashboard Views (Admin)', 'openDashboardViewsSheet')
     .addItem('Open Settings (Admin)', 'openSettingsSheet')
     .addItem('Open Audit Log (Admin)', 'openAuditSheet')
     .addItem('Open Archive (Admin)', 'openArchiveSheet')
@@ -155,6 +159,7 @@ function onOpen() {
     .addItem('Archive Completed Cases (Admin)', 'archiveCompletedCases')
     .addItem('Restore Selected Archived Case (Admin)', 'restoreSelectedArchivedCase')
     .addItem('Refresh Due Date Tests', 'refreshDueDateTests')
+    .addItem('Refresh Saved Views', 'refreshSavedViews')
     .addItem('Sync Calendar Grid', 'syncDistrictCalendarGrid')
     .addItem('Reapply Admin Sheet Protection', 'reapplyAdminSheetProtection')
     .addToUi();
@@ -523,6 +528,10 @@ function openDueDateTestsSheet(adminCode) {
   openAdminSheet_(SHEETS.tests, adminCode);
 }
 
+function openDashboardViewsSheet(adminCode) {
+  openAdminSheet_(SHEETS.views, adminCode);
+}
+
 function openSettingsSheet(adminCode) {
   openAdminSheet_(SHEETS.settings, adminCode);
 }
@@ -574,6 +583,15 @@ function archiveCompletedCases(adminCode) {
     return 0;
   }
 
+  const confirmation = SpreadsheetApp.getUi().alert(
+    'Archive Completed Cases',
+    `You are about to archive ${completedCases.length} completed case(s).\n\nSample case IDs: ${completedCases.slice(0, 5).map((row) => row.CaseID).join(', ')}${completedCases.length > 5 ? ', ...' : ''}`,
+    SpreadsheetApp.getUi().ButtonSet.OK_CANCEL
+  );
+  if (confirmation !== SpreadsheetApp.getUi().Button.OK) {
+    return 0;
+  }
+
   const archiveSheet = SpreadsheetApp.getActive().getSheetByName(SHEETS.archive);
   const archivedAt = new Date();
   const archiveValues = completedCases.map((row) => ARCHIVE_HEADERS.map((header) => (
@@ -608,9 +626,24 @@ function restoreSelectedArchivedCase(adminCode) {
     throw new Error('Select a row from ArchiveCases first.');
   }
 
+  const confirmation = SpreadsheetApp.getUi().alert(
+    'Restore Archived Case',
+    `Restore ${selection.caseId} to the active Cases sheet?`,
+    SpreadsheetApp.getUi().ButtonSet.OK_CANCEL
+  );
+  if (confirmation !== SpreadsheetApp.getUi().Button.OK) {
+    return '';
+  }
+
   const restoredCaseId = restoreArchivedCaseById_(selection.caseId);
   SpreadsheetApp.getUi().alert(`${restoredCaseId} was restored to the active Cases sheet.`);
   return restoredCaseId;
+}
+
+function refreshSavedViews() {
+  ensureWorkbookScaffold_();
+  refreshSavedViews_(true);
+  SpreadsheetApp.getUi().alert('Saved dashboard views were refreshed.');
 }
 
 function refreshDueDateTests() {
@@ -695,6 +728,8 @@ function refreshDashboard_(applyLayout) {
     getDistrictCaseTypeSummaryRows_(cases),
     applyLayout
   );
+
+  refreshSavedViews_(applyLayout, cases, documentsByCase);
 }
 
 function renderDashboardSheet_(sheet, title, subtitle, cases, documentsByCase, applyLayout) {
@@ -977,6 +1012,13 @@ function getDistrictDashboardSheetName_(districtName) {
   return `${DISTRICT_DASHBOARD_PREFIX}${cleanedName}`.slice(0, 99) || `${DISTRICT_DASHBOARD_PREFIX}District`;
 }
 
+function getSavedViewSheetName_(viewName) {
+  const cleanedName = String(viewName || '')
+    .replace(/[\[\]\\/?*:]/g, '-')
+    .trim();
+  return `${SAVED_VIEW_PREFIX}${cleanedName}`.slice(0, 99) || `${SAVED_VIEW_PREFIX}Saved View`;
+}
+
 function ensureWorkbookScaffold_(options) {
   const settings = Object.assign({
     seedReferenceData: false,
@@ -989,6 +1031,7 @@ function ensureWorkbookScaffold_(options) {
   ensureSheet_(SHEETS.archive, ARCHIVE_HEADERS);
   ensureSheet_(SHEETS.documents, DOCUMENT_HEADERS);
   ensureSheet_(SHEETS.tests, TEST_HEADERS);
+  ensureSheet_(SHEETS.views, VIEW_HEADERS);
   ensureSheet_(SHEETS.districts, DISTRICT_HEADERS);
   ensureSheet_(SHEETS.campuses, CAMPUS_HEADERS);
   ensureSheet_(SHEETS.evaluators, EVALUATOR_HEADERS);
@@ -1064,7 +1107,8 @@ function applySheetColumnFormats_(sheetName, sheet) {
   if (
     sheetName !== SHEETS.cases &&
     sheetName !== SHEETS.archive &&
-    sheetName !== SHEETS.tests
+    sheetName !== SHEETS.tests &&
+    sheetName !== SHEETS.views
   ) {
     return;
   }
@@ -1091,6 +1135,19 @@ function applySheetColumnFormats_(sheetName, sheet) {
     ];
     dateColumns.forEach((header) => {
       sheet.getRange(2, headerMap[header] + 1, Math.max(sheet.getMaxRows() - 1, 1), 1).setNumberFormat('mm/dd/yyyy');
+    });
+    return;
+  }
+
+  if (sheetName === SHEETS.views) {
+    const headerMap = getHeaderMap_(VIEW_HEADERS);
+    const yesNoColumns = ['Active'];
+    yesNoColumns.forEach((header) => {
+      sheet.getRange(2, headerMap[header] + 1, Math.max(sheet.getMaxRows() - 1, 1), 1).setDataValidation(
+        SpreadsheetApp.newDataValidation()
+          .requireValueInList(['Yes', 'No'], true)
+          .build()
+      );
     });
     return;
   }
@@ -1150,7 +1207,8 @@ function getManagedSheetNames_() {
   const districtDashboardNames = getActiveColumnValues_(SHEETS.districts, 'District').map((districtName) => (
     getDistrictDashboardSheetName_(districtName)
   ));
-  return [...new Set(Object.values(SHEETS).concat(districtDashboardNames))];
+  const savedViewSheetNames = getActiveSavedViews_().map((view) => getSavedViewSheetName_(view.ViewName));
+  return [...new Set(Object.values(SHEETS).concat(districtDashboardNames, savedViewSheetNames))];
 }
 
 function getAdminEditorEmails_() {
@@ -1259,6 +1317,7 @@ function buildSchoolYearDates_() {
 function seedReferenceData_() {
   seedSettings_();
   seedDueDateTests_();
+  seedSavedViews_();
 
   maybeAppendSeedRow_(SHEETS.districts, DISTRICT_HEADERS, {
     District: 'Sample ISD',
@@ -1279,6 +1338,59 @@ function seedReferenceData_() {
     Email: 'sample@example.org',
     Active: 'Yes',
   });
+}
+
+function seedSavedViews_() {
+  const sheet = SpreadsheetApp.getActive().getSheetByName(SHEETS.views);
+  if (sheet.getLastRow() > 1) {
+    return;
+  }
+
+  const seedRows = [
+    {
+      ViewName: 'Overdue - All',
+      District: '',
+      Evaluator: '',
+      CaseType: '',
+      Status: '',
+      DeadlineBucket: 'Overdue',
+      Active: 'Yes',
+      Description: 'All open overdue cases.',
+    },
+    {
+      ViewName: 'Due This Month - All',
+      District: '',
+      Evaluator: '',
+      CaseType: '',
+      Status: '',
+      DeadlineBucket: 'DueThisMonth',
+      Active: 'Yes',
+      Description: 'All open cases due in the next 30 days.',
+    },
+    {
+      ViewName: 'Initial - Active',
+      District: '',
+      Evaluator: '',
+      CaseType: CASE_TYPES.initial,
+      Status: '',
+      DeadlineBucket: '',
+      Active: 'Yes',
+      Description: 'All active initial cases.',
+    },
+    {
+      ViewName: 'Re-evaluation - Active',
+      District: '',
+      Evaluator: '',
+      CaseType: CASE_TYPES.reevaluation,
+      Status: '',
+      DeadlineBucket: '',
+      Active: 'Yes',
+      Description: 'All active re-evaluation cases.',
+    },
+  ];
+
+  const values = seedRows.map((row) => VIEW_HEADERS.map((header) => (row[header] === undefined ? '' : row[header])));
+  sheet.getRange(2, 1, values.length, VIEW_HEADERS.length).setValues(values);
 }
 
 function seedDueDateTests_() {
@@ -1469,6 +1581,104 @@ function refreshDueDateTests_() {
     failCount,
     checkCount,
   };
+}
+
+function refreshSavedViews_(applyLayout, cases, documentsByCase) {
+  const ss = SpreadsheetApp.getActive();
+  const allCases = cases || getTableRows_(SHEETS.cases, CASE_HEADERS);
+  const allDocuments = documentsByCase || getCaseDocumentsMap_();
+  const savedViews = getActiveSavedViews_();
+  const expectedSheetNames = savedViews.map((view) => getSavedViewSheetName_(view.ViewName));
+
+  savedViews.forEach((view) => {
+    const sheetName = getSavedViewSheetName_(view.ViewName);
+    const existingSheet = ss.getSheetByName(sheetName);
+    const sheet = existingSheet || ss.insertSheet(sheetName);
+    const filteredCases = filterCasesForSavedView_(allCases, view);
+    renderDashboardSheet_(
+      sheet,
+      view.ViewName,
+      view.Description || buildSavedViewSubtitle_(view),
+      filteredCases,
+      allDocuments,
+      applyLayout
+    );
+    if ((applyLayout || !existingSheet) && getAdminEditorEmails_().length) {
+      applyProtection_(sheet);
+    }
+  });
+
+  ss.getSheets()
+    .filter((sheet) => sheet.getName().startsWith(SAVED_VIEW_PREFIX))
+    .filter((sheet) => !expectedSheetNames.includes(sheet.getName()))
+    .forEach((sheet) => ss.deleteSheet(sheet));
+}
+
+function getActiveSavedViews_() {
+  return getTableRows_(SHEETS.views, VIEW_HEADERS)
+    .filter((row) => String(row.Active || '').toLowerCase() === 'yes')
+    .filter((row) => String(row.ViewName || '').trim());
+}
+
+function filterCasesForSavedView_(cases, view) {
+  const today = normalizeDateForStorage_(new Date());
+  return cases.filter((row) => {
+    if (String(view.District || '').trim() && normalizeComparisonText_(row.District) !== normalizeComparisonText_(view.District)) {
+      return false;
+    }
+    if (String(view.Evaluator || '').trim() && normalizeComparisonText_(row.LeadEvaluator) !== normalizeComparisonText_(view.Evaluator)) {
+      return false;
+    }
+    if (String(view.CaseType || '').trim() && row.CaseType !== view.CaseType) {
+      return false;
+    }
+    if (String(view.Status || '').trim() && row.Status !== view.Status) {
+      return false;
+    }
+
+    const deadlineBucket = String(view.DeadlineBucket || '').trim();
+    if (!deadlineBucket) {
+      return true;
+    }
+
+    const deadline = parseDate_(row.PrimaryDeadline);
+    if (!deadline) {
+      return false;
+    }
+
+    const diffDays = Math.floor((deadline - today) / 86400000);
+    if (deadlineBucket === 'Overdue') {
+      return diffDays < 0;
+    }
+    if (deadlineBucket === 'DueThisWeek') {
+      return diffDays >= 0 && diffDays <= 7;
+    }
+    if (deadlineBucket === 'DueThisMonth') {
+      return diffDays >= 0 && diffDays <= 30;
+    }
+
+    return true;
+  });
+}
+
+function buildSavedViewSubtitle_(view) {
+  const parts = [];
+  if (String(view.District || '').trim()) {
+    parts.push(`District: ${view.District}`);
+  }
+  if (String(view.Evaluator || '').trim()) {
+    parts.push(`Evaluator: ${view.Evaluator}`);
+  }
+  if (String(view.CaseType || '').trim()) {
+    parts.push(`Case Type: ${view.CaseType}`);
+  }
+  if (String(view.Status || '').trim()) {
+    parts.push(`Status: ${view.Status}`);
+  }
+  if (String(view.DeadlineBucket || '').trim()) {
+    parts.push(`Deadline: ${view.DeadlineBucket}`);
+  }
+  return parts.length ? parts.join(' | ') : 'Saved dashboard view';
 }
 
 function getTableRows_(sheetName, headers) {

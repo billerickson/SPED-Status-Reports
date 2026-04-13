@@ -15,11 +15,14 @@
 - upload unlink and delete controls in the sidebar
 - due-date validation harness sheet
 - quick sidebar filters for overdue, due-this-week, and evaluator-specific active cases
+- saved dashboard views generated from a `DashboardViews` config sheet
+- archive/restore confirmation safeguards before bulk changes run
 
 ## Recommended Next
 - add richer dashboard filter presets and saved views
-- add bulk archive/restore safeguards with preview counts
 - add more explicit upload ownership tracking before permanent delete
+- add saved-view sharing guidance and a few district-specific starter templates
+- add archive/restore audit summaries to the dashboard cards
 
 ## V2 Direction
 - Gmail draft generation after milestone updates

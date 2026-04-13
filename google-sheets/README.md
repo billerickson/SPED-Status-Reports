@@ -40,6 +40,7 @@ Use the `SPED Status Reports` menu in the spreadsheet.
    - `Open Evaluators (Admin)`
    - `Open Calendars (Admin)`
    - `Open Due Date Tests (Admin)`
+   - `Open Dashboard Views (Admin)`
    - `Open Settings (Admin)`
    - `Open Audit Log (Admin)`
    - `Open Archive (Admin)`
@@ -63,6 +64,7 @@ Use these sheets for each type of maintenance:
 - `AuditLog`
 - `ArchiveCases`
 - `DueDateTests`
+- `DashboardViews`
 - `SummaryByCaseType`
 - `SummaryByEvaluator`
 - `SummaryByDistrictCaseType`
@@ -113,6 +115,7 @@ The data is stored inside this same Google Sheet on visible protected tabs:
 - `Settings`
 - `AuditLog`
 - `DueDateTests`
+- `DashboardViews`
 
 They are visible to everyone who can open the spreadsheet.
 Direct sheet edits are limited by Google Sheets protection to the admin accounts listed in `ADMIN_EDITOR_EMAILS`.
@@ -158,6 +161,26 @@ To remove uploads:
 2. In the uploads list, use `Unlink` to remove the document from the case only.
 3. Use `Delete` to remove the document from the case and send the linked Google Drive file to trash when the script has permission.
 
+To manage saved dashboard views:
+1. Open `DashboardViews`.
+2. Add or edit rows using these columns:
+   - `ViewName`
+   - `District`
+   - `Evaluator`
+   - `CaseType`
+   - `Status`
+   - `DeadlineBucket`
+   - `Active`
+   - `Description`
+3. Use `DeadlineBucket` values like `Overdue`, `DueThisWeek`, or `DueThisMonth`.
+4. Run `SPED Status Reports -> Refresh Saved Views`.
+5. The app will create or update matching sheets named `View - <ViewName>`.
+
+Bulk admin safeguards now in place:
+- archiving prompts with the number of completed cases before it runs
+- archived-case restore prompts with the selected `Case ID`
+- document delete still requires confirmation in the sidebar before sending a Drive file to trash
+
 ## Behavior changes from Excel
 - The app opens from a custom Google Sheets menu instead of `Workbook_Open`.
 - Forms are rendered in a sidebar using HTML Service instead of VBA `UserForm`s.
@@ -185,6 +208,8 @@ To remove uploads:
   - quick sidebar lists for overdue, due-this-week, and evaluator-specific active cases
   - upload unlink/delete controls from the sidebar
   - due-date test harness sheet for validating district timeline calculations
+  - saved dashboard-view sheets generated from the `DashboardViews` config tab
+  - archive and restore confirmations before bulk admin changes run
   - status flow:
     - `Referral Received`
     - `Response Sent`
