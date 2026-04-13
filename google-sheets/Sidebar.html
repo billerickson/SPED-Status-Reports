@@ -617,6 +617,10 @@
 
         google.script.run
           .withSuccessHandler((detail) => {
+            if (!detail || !detail.CaseID) {
+              handleError(new Error('That case could not be loaded. Refresh the dashboard and try the search again.'));
+              return;
+            }
             state.selectedCaseId = detail.CaseID;
             document.getElementById('editorSection').classList.remove('hidden');
             fillEditor(detail);

@@ -191,6 +191,9 @@ function searchCases(studentId, caseType) {
   const rows = getTableRows_(SHEETS.cases, CASE_HEADERS);
   return rows
     .filter((row) => {
+      if (!String(row.CaseID || '').trim()) {
+        return false;
+      }
       if (normalizeStudentId_(row.StudentID) !== normalizedStudentId) {
         return false;
       }
@@ -210,6 +213,10 @@ function searchCases(studentId, caseType) {
 }
 
 function getCaseDetails(caseId) {
+  if (!String(caseId || '').trim()) {
+    throw new Error('A valid Case ID is required to load an existing case.');
+  }
+
   const record = findCaseRecord_(caseId);
   if (!record) {
     throw new Error(`Case not found: ${caseId}`);
@@ -1268,6 +1275,9 @@ function findCaseRecord_(caseId) {
   const values = sheet.getRange(2, 1, lastRow - 1, CASE_HEADERS.length).getValues();
 
   for (let index = 0; index < values.length; index += 1) {
+    if (!String(values[index][headerMap.CaseID] || '').trim()) {
+      continue;
+    }
     if (String(values[index][headerMap.CaseID]).trim() === String(caseId).trim()) {
       return {
         row: toObject_(CASE_HEADERS, values[index]),
