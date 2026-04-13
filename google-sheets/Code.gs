@@ -862,7 +862,12 @@ function sendNewReferralAssignmentNotifications_(row) {
     '</table>',
   ].join('');
 
-  return sendCaseNotificationEmail_(row.CaseID, 'NewReferralAssignment', emailConfig.newReferralAssignmentTo, emailConfig.newReferralAssignmentCc, subject, plainBody, htmlBody);
+  const recipients = mergeNotificationRecipients_(
+    emailConfig.newReferralAssignmentTo,
+    emailConfig.newReferralAssignmentCc,
+    emailConfig.includeLeadEvaluatorOnNewAssignments ? getEvaluatorEmailByName_(row.LeadEvaluator) : ''
+  );
+  return sendCaseNotificationEmail_(row.CaseID, 'NewReferralAssignment', recipients.to, recipients.cc, subject, plainBody, htmlBody);
 }
 
 function sendMilestoneUpdateNotifications_(existingRow, updatedRow) {
@@ -921,7 +926,12 @@ function sendMilestoneUpdateNotifications_(existingRow, updatedRow) {
     `<p><strong>Variance Explanation:</strong> ${escapeHtml_(updatedRow.VarianceExplanation || '')}</p>`,
   ].join('');
 
-  return sendCaseNotificationEmail_(updatedRow.CaseID, 'MilestoneUpdate', recipientGroups.to, recipientGroups.cc, subject, plainBody, htmlBody);
+  const recipients = mergeNotificationRecipients_(
+    recipientGroups.to,
+    recipientGroups.cc,
+    emailConfig.includeLeadEvaluatorOnMilestoneUpdates ? getEvaluatorEmailByName_(updatedRow.LeadEvaluator) : ''
+  );
+  return sendCaseNotificationEmail_(updatedRow.CaseID, 'MilestoneUpdate', recipients.to, recipients.cc, subject, plainBody, htmlBody);
 }
 
 function sendCaseNotificationEmail_(caseId, actionLabel, toRecipients, ccRecipients, subject, plainBody, htmlBody) {
@@ -987,6 +997,22 @@ function splitEmails_(value) {
     .split(',')
     .map((email) => email.trim())
     .filter(Boolean);
+}
+
+function mergeNotificationRecipients_(toRecipients, ccRecipients, preferredToEmail) {
+  const toSet = new Set(splitEmails_(toRecipients));
+  const ccSet = new Set(splitEmails_(ccRecipients));
+  const preferred = String(preferredToEmail || '').trim();
+
+  if (preferred) {
+    toSet.add(preferred);
+    ccSet.delete(preferred);
+  }
+
+  return {
+    to: [...toSet].join(','),
+    cc: [...ccSet].filter((email) => !toSet.has(email)).join(','),
+  };
 }
 
 function getChangedMilestoneFields_(existingRow, updatedRow) {
@@ -1893,6 +1919,8 @@ function seedSettings_() {
   ensureSettingRow_('NewReferralAssignmentTo', '', 'Comma-separated recipients for automatic new referral assignment emails.');
   ensureSettingRow_('NewReferralAssignmentCc', '', 'Optional CC recipients for automatic new referral assignment emails.');
   ensureSettingRow_('AutoSendMilestoneUpdates', 'No', 'Set to Yes to automatically send milestone update emails to selected service contacts.');
+  ensureSettingRow_('IncludeLeadEvaluatorOnNewAssignments', 'Yes', 'Set to Yes to automatically add the lead evaluator to new referral assignment emails.');
+  ensureSettingRow_('IncludeLeadEvaluatorOnMilestoneUpdates', 'Yes', 'Set to Yes to automatically add the lead evaluator to milestone update emails.');
   ensureSettingRow_('NotificationEmailTo', '', 'Comma-separated email recipients used for Gmail draft creation.');
   ensureSettingRow_('NotificationEmailCc', '', 'Optional comma-separated CC recipients for Gmail drafts.');
   ensureSettingRow_('NotificationEmailBcc', '', 'Optional comma-separated BCC recipients for Gmail drafts.');
@@ -1913,6 +1941,8 @@ function getEmailIntegrationConfig_() {
     newReferralAssignmentTo: String(getSettingValue_('NewReferralAssignmentTo', '') || '').trim(),
     newReferralAssignmentCc: String(getSettingValue_('NewReferralAssignmentCc', '') || '').trim(),
     autoSendMilestoneUpdates: String(getSettingValue_('AutoSendMilestoneUpdates', 'No') || '').toLowerCase() === 'yes',
+    includeLeadEvaluatorOnNewAssignments: String(getSettingValue_('IncludeLeadEvaluatorOnNewAssignments', 'Yes') || '').toLowerCase() === 'yes',
+    includeLeadEvaluatorOnMilestoneUpdates: String(getSettingValue_('IncludeLeadEvaluatorOnMilestoneUpdates', 'Yes') || '').toLowerCase() === 'yes',
     to: String(getSettingValue_('NotificationEmailTo', '') || '').trim(),
     cc: String(getSettingValue_('NotificationEmailCc', '') || '').trim(),
     bcc: String(getSettingValue_('NotificationEmailBcc', '') || '').trim(),
@@ -1920,6 +1950,17 @@ function getEmailIntegrationConfig_() {
     alias: String(getSettingValue_('NotificationFromAlias', '') || '').trim(),
     senderName: String(getSettingValue_('NotificationSenderName', 'SPED Status Reports') || '').trim(),
   };
+}
+
+function getEvaluatorEmailByName_(leadEvaluatorName) {
+  const normalizedName = normalizeComparisonText_(leadEvaluatorName);
+  if (!normalizedName) {
+    return '';
+  }
+
+  const rows = getActiveRows_(SHEETS.evaluators);
+  const match = rows.find((row) => normalizeComparisonText_(row.LeadEvaluator) === normalizedName);
+  return match ? String(match.Email || '').trim() : '';
 }
 
 function getActiveServiceContacts_() {

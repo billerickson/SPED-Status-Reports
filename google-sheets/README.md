@@ -73,6 +73,8 @@ Use these sheets for each type of maintenance:
     - `NewReferralAssignmentTo`
     - `NewReferralAssignmentCc`
     - `AutoSendMilestoneUpdates`
+    - `IncludeLeadEvaluatorOnNewAssignments`
+    - `IncludeLeadEvaluatorOnMilestoneUpdates`
     - `NotificationEmailTo`
     - `NotificationEmailCc`
     - `NotificationEmailBcc`
@@ -202,12 +204,14 @@ Before using v2:
 2. Set `AutoSendNewReferralAssignments = Yes` if new case creation should email the assignment group automatically.
 3. Fill in `NewReferralAssignmentTo` and optional `NewReferralAssignmentCc`.
 4. Set `AutoSendMilestoneUpdates = Yes` if case milestone updates should email the checked service contacts automatically.
-5. Open `ServiceContacts` and fill in the email groups for each `District + Service` row.
-6. Fill in `NotificationEmailTo` with the default recipients for manual draft creation.
-7. Optional: fill in CC, BCC, reply-to, sender name, and Gmail alias settings.
-8. Optional: fill in `NotificationCalendarId` if events should go to a dedicated SPED calendar.
+5. Leave `IncludeLeadEvaluatorOnNewAssignments` and `IncludeLeadEvaluatorOnMilestoneUpdates` set to `Yes` if the lead evaluator should always be included automatically.
+6. Make sure the `Evaluators` sheet has the correct email for each lead evaluator.
+7. Open `ServiceContacts` and fill in the email groups for each `District + Service` row.
+8. Fill in `NotificationEmailTo` with the default recipients for manual draft creation.
+9. Optional: fill in CC, BCC, reply-to, sender name, and Gmail alias settings.
+10. Optional: fill in `NotificationCalendarId` if events should go to a dedicated SPED calendar.
    If left blank, events go to the authorized user's default calendar.
-9. Save the settings and reauthorize the script if prompted.
+11. Save the settings and reauthorize the script if prompted.
 
 If you already had an older `ServiceContacts` sheet, run `Install / Repair Workbook` once after pasting this update so the `District` column is added and preserved correctly.
 
@@ -228,6 +232,7 @@ Each v2 action also writes an entry to `AuditLog`.
 Automatic email behavior:
 - a new `Initial` case save can automatically send a referral assignment email to the configured assignment group
 - an update save can automatically send a milestone update email to all active `ServiceContacts` rows that match both the case district and the checked services on the case
+- the lead evaluator can also be included automatically on both email types using the `Evaluators.Email` value for the selected lead evaluator
 - case saves still complete even if an automatic email cannot be sent; the app shows a warning and logs the failure in `AuditLog`
 
 To manage saved dashboard views:
