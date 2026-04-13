@@ -5,10 +5,10 @@
 - separate `Service Notes` and `Variance Explanation` fields
 - stronger date-order validation with clearer error messages
 - lightweight `Settings` sheet for warning window, timeline colors, and optional uploads folder override
+- dashboard summary cards for `Total Active`, `Overdue`, `Due This Week`, `Due This Month`, and `Completed`
+- admin archive flow with `ArchiveCases`
 
 ## Recommended Next
-- add dashboard summary cards for `Overdue`, `Due This Week`, `Due This Month`, and `Completed`
-- add an `Archive` sheet plus admin action to move completed cases out of the active working set
 - add direct dashboard links or buttons to open a case from the sidebar by `Case ID`
 - add duplicate detection based on `Student Name + DOB + Campus` in addition to `Student ID`
 - add delete/unlink support for uploaded documents

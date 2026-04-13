@@ -41,6 +41,7 @@ Use the `SPED Status Reports` menu in the spreadsheet.
    - `Open Calendars (Admin)`
    - `Open Settings (Admin)`
    - `Open Audit Log (Admin)`
+   - `Open Archive (Admin)`
 2. Enter the admin access code.
 3. Edit the rows directly in the revealed sheet.
 
@@ -59,6 +60,7 @@ Use these sheets for each type of maintenance:
 - `DistrictCalendars`
 - `Settings`
 - `AuditLog`
+- `ArchiveCases`
   - the sheet is preloaded with dates from January 1, 2026 through June 1, 2027
   - weekends default to `No`
   - weekdays default to `Yes`
@@ -139,6 +141,8 @@ For milestone updates:
   - configurable warning colors and deadline window from `Settings`
   - district-aware instructional-day calculations
   - master dashboard plus one dashboard sheet per district
+  - dashboard summary cards for active work, overdue cases, due this week, due this month, and completed cases
+  - admin archive flow for completed cases
   - status flow:
     - `Referral Received`
     - `Response Sent`

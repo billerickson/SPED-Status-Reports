@@ -382,6 +382,10 @@
           <button class="secondary" onclick="runOpenAdminSheet('settings')">Open Settings</button>
           <button class="secondary" onclick="runOpenAdminSheet('audit')">Open Audit Log</button>
         </div>
+        <div class="row">
+          <button class="secondary" onclick="runOpenAdminSheet('archive')">Open Archive</button>
+          <button class="secondary" onclick="runAdminAction('archive')">Archive Completed</button>
+        </div>
       </div>
     </div>
 
@@ -817,9 +821,20 @@
 
       function runAdminAction(action) {
         const adminCode = document.getElementById('adminCode').value;
-        const call = action === 'show' ? 'showAllSheets' : 'applyAdminSheetProtection';
+        const actions = {
+          show: 'showAllSheets',
+          protect: 'applyAdminSheetProtection',
+          archive: 'archiveCompletedCases',
+        };
+        const call = actions[action];
         google.script.run
-          .withSuccessHandler(() => setStatus('Admin action completed.', 'success'))
+          .withSuccessHandler((result) => {
+            if (action === 'archive') {
+              setStatus(`${result || 0} completed case(s) archived.`, 'success');
+              return;
+            }
+            setStatus('Admin action completed.', 'success');
+          })
           .withFailureHandler(handleError)
           [call](adminCode);
       }
@@ -832,6 +847,7 @@
           calendars: 'openCalendarsSheet',
           settings: 'openSettingsSheet',
           audit: 'openAuditSheet',
+          archive: 'openArchiveSheet',
         };
         const adminCode = document.getElementById('adminCode').value;
         google.script.run

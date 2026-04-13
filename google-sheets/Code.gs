@@ -5,6 +5,7 @@ const DISTRICT_DASHBOARD_PREFIX = 'Dashboard - ';
 
 const SHEETS = {
   cases: 'Cases',
+  archive: 'ArchiveCases',
   documents: 'CaseDocuments',
   districts: 'Districts',
   campuses: 'Campuses',
@@ -72,6 +73,7 @@ const CASE_HEADERS = [
 ];
 
 const DOCUMENT_HEADERS = ['DocumentID', 'CaseID', 'DocumentLabel', 'DocumentPath', 'AddedAt'];
+const ARCHIVE_HEADERS = CASE_HEADERS.concat(['ArchivedAt']);
 const DISTRICT_HEADERS = ['District', 'ResponseSchoolDays', 'FIIESchoolDays', 'ARDCalendarDays', 'Active'];
 const CAMPUS_HEADERS = ['Campus', 'District', 'Active'];
 const EVALUATOR_HEADERS = ['LeadEvaluator', 'Email', 'Active'];
@@ -118,6 +120,8 @@ function onOpen() {
     .addItem('Open Calendars (Admin)', 'openCalendarsSheet')
     .addItem('Open Settings (Admin)', 'openSettingsSheet')
     .addItem('Open Audit Log (Admin)', 'openAuditSheet')
+    .addItem('Open Archive (Admin)', 'openArchiveSheet')
+    .addItem('Archive Completed Cases (Admin)', 'archiveCompletedCases')
     .addItem('Sync Calendar Grid', 'syncDistrictCalendarGrid')
     .addItem('Reapply Admin Sheet Protection', 'reapplyAdminSheetProtection')
     .addToUi();
@@ -415,6 +419,45 @@ function openAuditSheet(adminCode) {
   openAdminSheet_(SHEETS.audit, adminCode);
 }
 
+function openArchiveSheet(adminCode) {
+  openAdminSheet_(SHEETS.archive, adminCode);
+}
+
+function archiveCompletedCases(adminCode) {
+  let resolvedCode = adminCode;
+  if (!resolvedCode) {
+    resolvedCode = SpreadsheetApp.getUi().prompt('Enter the admin access code to archive completed cases.').getResponseText();
+  }
+
+  if (!validateAdminCode(resolvedCode)) {
+    throw new Error('Admin access denied.');
+  }
+
+  ensureWorkbookScaffold_();
+
+  const completedCases = getTableRows_(SHEETS.cases, CASE_HEADERS).filter((row) => row.Status === STATUSES.completed);
+  if (!completedCases.length) {
+    SpreadsheetApp.getUi().alert('No completed cases are ready to archive.');
+    return 0;
+  }
+
+  const archiveSheet = SpreadsheetApp.getActive().getSheetByName(SHEETS.archive);
+  const archivedAt = new Date();
+  const archiveValues = completedCases.map((row) => ARCHIVE_HEADERS.map((header) => (
+    header === 'ArchivedAt' ? archivedAt : (row[header] === undefined ? '' : row[header])
+  )));
+
+  archiveSheet.getRange(archiveSheet.getLastRow() + 1, 1, archiveValues.length, ARCHIVE_HEADERS.length).setValues(archiveValues);
+
+  const remainingCases = getTableRows_(SHEETS.cases, CASE_HEADERS).filter((row) => row.Status !== STATUSES.completed);
+  rewriteSheetRows_(SHEETS.cases, CASE_HEADERS, remainingCases);
+
+  appendAuditRows_(completedCases.map((row) => buildAuditRow_(row.CaseID, 'Archive', 'Status', row.Status, 'Archived')));
+  refreshDashboard_(true);
+  SpreadsheetApp.getUi().alert(`${completedCases.length} completed case(s) were archived.`);
+  return completedCases.length;
+}
+
 function showAllSheets(adminCode) {
   if (!validateAdminCode(adminCode)) {
     throw new Error('Admin access denied.');
@@ -472,31 +515,93 @@ function renderDashboardSheet_(sheet, title, subtitle, cases, documentsByCase, a
   const headers = getDashboardHeaders_();
   const records = cases.map((row) => buildDashboardRecord_(row, documentsByCase[row.CaseID] || []));
   const output = records.map((record) => record.values);
+  const summary = getDashboardSummary_(cases);
+  const headerRow = 7;
+  const dataStartRow = 8;
 
-  if (applyLayout || sheet.getRange(4, 1).getValue() !== headers[0]) {
+  if (applyLayout || sheet.getRange(headerRow, 1).getValue() !== headers[0]) {
     sheet.clear();
     sheet.getRange(1, 1).setValue(title).setFontWeight('bold').setFontSize(16);
     sheet.getRange(2, 1).setValue(subtitle);
-    sheet.getRange(4, 1, 1, headers.length).setValues([headers]).setFontWeight('bold');
-    sheet.setFrozenRows(4);
-  } else if (sheet.getLastRow() > 4) {
-    sheet.getRange(5, 1, sheet.getLastRow() - 4, headers.length).clearContent().setBackground('#ffffff');
+    sheet.setFrozenRows(headerRow);
+  } else if (sheet.getLastRow() >= dataStartRow) {
+    sheet.getRange(dataStartRow, 1, sheet.getLastRow() - dataStartRow + 1, headers.length).clearContent().setBackground('#ffffff');
   }
 
+  renderDashboardSummary_(sheet, summary);
+  sheet.getRange(headerRow, 1, 1, headers.length).setValues([headers]).setFontWeight('bold');
+
   if (output.length) {
-    sheet.getRange(5, 1, output.length, headers.length).setValues(output);
-    applyDashboardFormatting_(sheet, 5, records);
-    sheet.getRange(5, 4, output.length, 2).setNumberFormat('@');
-    sheet.getRange(5, headers.length - 1, output.length, 2).setWrap(true);
+    sheet.getRange(dataStartRow, 1, output.length, headers.length).setValues(output);
+    applyDashboardFormatting_(sheet, dataStartRow, records);
+    sheet.getRange(dataStartRow, 4, output.length, 2).setNumberFormat('@');
+    sheet.getRange(dataStartRow, headers.length - 1, output.length, 2).setWrap(true);
   }
 
   if (sheet.getFilter()) {
     sheet.getFilter().remove();
   }
-  sheet.getRange(4, 1, Math.max(output.length + 1, 2), headers.length).createFilter();
+  sheet.getRange(headerRow, 1, Math.max(output.length + 1, 2), headers.length).createFilter();
   if (applyLayout) {
     sheet.autoResizeColumns(1, headers.length);
   }
+}
+
+function renderDashboardSummary_(sheet, summary) {
+  sheet.getRange(4, 1, 2, 10).breakApart();
+  const cards = [
+    ['Total Active', summary.totalActive],
+    ['Overdue', summary.overdue],
+    ['Due This Week', summary.dueThisWeek],
+    ['Due This Month', summary.dueThisMonth],
+    ['Completed', summary.completed],
+  ];
+  const backgrounds = ['#d9ead3', '#ff9999', '#fff2cc', '#f4cccc', '#d0e0e3'];
+
+  cards.forEach((card, index) => {
+    const column = index * 2 + 1;
+    sheet.getRange(4, column, 1, 2).merge().setValue(card[0]).setFontWeight('bold').setBackground(backgrounds[index]);
+    sheet.getRange(5, column, 1, 2).merge().setValue(card[1]).setFontSize(16).setFontWeight('bold').setBackground('#ffffff');
+  });
+}
+
+function getDashboardSummary_(cases) {
+  const today = normalizeDateForStorage_(new Date());
+  let overdue = 0;
+  let dueThisWeek = 0;
+  let dueThisMonth = 0;
+  let completed = 0;
+
+  cases.forEach((row) => {
+    if (row.Status === STATUSES.completed) {
+      completed += 1;
+      return;
+    }
+
+    const deadline = parseDate_(row.PrimaryDeadline);
+    if (!deadline) {
+      return;
+    }
+
+    const diffDays = Math.floor((deadline - today) / 86400000);
+    if (diffDays < 0) {
+      overdue += 1;
+    }
+    if (diffDays >= 0 && diffDays <= 7) {
+      dueThisWeek += 1;
+    }
+    if (diffDays >= 0 && diffDays <= 30) {
+      dueThisMonth += 1;
+    }
+  });
+
+  return {
+    totalActive: cases.length,
+    overdue,
+    dueThisWeek,
+    dueThisMonth,
+    completed,
+  };
 }
 
 function getDashboardHeaders_() {
@@ -588,6 +693,7 @@ function ensureWorkbookScaffold_(options) {
   }, options || {});
 
   ensureSheet_(SHEETS.cases, CASE_HEADERS);
+  ensureSheet_(SHEETS.archive, ARCHIVE_HEADERS);
   ensureSheet_(SHEETS.documents, DOCUMENT_HEADERS);
   ensureSheet_(SHEETS.districts, DISTRICT_HEADERS);
   ensureSheet_(SHEETS.campuses, CAMPUS_HEADERS);
@@ -658,11 +764,11 @@ function getPreservedSheetRows_(sheet, existingHeaders, targetHeaders) {
 }
 
 function applySheetColumnFormats_(sheetName, sheet) {
-  if (sheetName !== SHEETS.cases || sheet.getMaxRows() < 2) {
+  if ((sheetName !== SHEETS.cases && sheetName !== SHEETS.archive) || sheet.getMaxRows() < 2) {
     return;
   }
 
-  const headerMap = getHeaderMap_(CASE_HEADERS);
+  const headerMap = getHeaderMap_(sheetName === SHEETS.archive ? ARCHIVE_HEADERS : CASE_HEADERS);
   sheet.getRange(2, headerMap.StudentID + 1, Math.max(sheet.getMaxRows() - 1, 1), 1).setNumberFormat('@');
   sheet.getRange(2, headerMap.GradeLevel + 1, Math.max(sheet.getMaxRows() - 1, 1), 1).setNumberFormat('@');
 }
@@ -886,6 +992,20 @@ function writeCaseRowByIndex_(rowIndex, objectRow) {
   const sheet = SpreadsheetApp.getActive().getSheetByName(SHEETS.cases);
   const rowValues = CASE_HEADERS.map((header) => (objectRow[header] === undefined ? '' : objectRow[header]));
   sheet.getRange(rowIndex, 1, 1, CASE_HEADERS.length).setValues([rowValues]);
+}
+
+function rewriteSheetRows_(sheetName, headers, rows) {
+  const sheet = SpreadsheetApp.getActive().getSheetByName(sheetName);
+  sheet.clearContents();
+  sheet.getRange(1, 1, 1, headers.length).setValues([headers]).setFontWeight('bold');
+  sheet.setFrozenRows(1);
+
+  if (rows.length) {
+    const values = rows.map((row) => headers.map((header) => (row[header] === undefined ? '' : row[header])));
+    sheet.getRange(2, 1, values.length, headers.length).setValues(values);
+  }
+
+  applySheetColumnFormats_(sheetName, sheet);
 }
 
 function getTableRows_(sheetName, headers) {
