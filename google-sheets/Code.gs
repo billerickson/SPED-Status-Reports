@@ -882,10 +882,10 @@ function sendNewReferralAssignmentNotifications_(row) {
     return logNotificationSkip_(
       row.CaseID,
       'NewReferralAssignment',
-      `No assignment recipients or lead evaluator email were available. Resolved To="${recipients.to}" Cc="${recipients.cc}".`
+      `No assignment recipients or lead evaluator email were available. Resolved To="${recipients.to}" Cc="${recipients.cc}". Invalid recipients ignored: ${recipients.invalid && recipients.invalid.length ? recipients.invalid.join(', ') : '(none)'}.`
     );
   }
-  return sendCaseNotificationEmail_(row.CaseID, 'NewReferralAssignment', recipients.to, recipients.cc, subject, plainBody, htmlBody);
+  return sendCaseNotificationEmail_(row.CaseID, 'NewReferralAssignment', recipients.to, recipients.cc, subject, plainBody, htmlBody, recipients.invalid);
 }
 
 function sendMilestoneUpdateNotifications_(existingRow, updatedRow) {
@@ -910,7 +910,7 @@ function sendMilestoneUpdateNotifications_(existingRow, updatedRow) {
     return logNotificationSkip_(
       updatedRow.CaseID,
       statusChanged ? 'StatusUpdate' : 'MilestoneUpdate',
-      `No active service contact or lead evaluator email was available. Resolved To="${recipients.to}" Cc="${recipients.cc}".`
+      `No active service contact or lead evaluator email was available. Resolved To="${recipients.to}" Cc="${recipients.cc}". Invalid recipients ignored: ${recipients.invalid && recipients.invalid.length ? recipients.invalid.join(', ') : '(none)'}.`
     );
   }
 
@@ -961,7 +961,7 @@ function sendMilestoneUpdateNotifications_(existingRow, updatedRow) {
     `<p><strong>Variance Explanation:</strong> ${escapeHtml_(updatedRow.VarianceExplanation || '')}</p>`,
   ].join('');
 
-  return sendCaseNotificationEmail_(updatedRow.CaseID, statusChanged ? 'StatusUpdate' : 'MilestoneUpdate', recipients.to, recipients.cc, subject, plainBody, htmlBody);
+  return sendCaseNotificationEmail_(updatedRow.CaseID, statusChanged ? 'StatusUpdate' : 'MilestoneUpdate', recipients.to, recipients.cc, subject, plainBody, htmlBody, recipients.invalid);
 }
 
 function logNotificationSkip_(caseId, actionLabel, reason) {
@@ -971,7 +971,7 @@ function logNotificationSkip_(caseId, actionLabel, reason) {
   return [`Automatic email skipped for ${actionLabel}: ${reason}`];
 }
 
-function sendCaseNotificationEmail_(caseId, actionLabel, toRecipients, ccRecipients, subject, plainBody, htmlBody) {
+function sendCaseNotificationEmail_(caseId, actionLabel, toRecipients, ccRecipients, subject, plainBody, htmlBody, invalidRecipients) {
   try {
     const options = {
       htmlBody,
@@ -992,12 +992,14 @@ function sendCaseNotificationEmail_(caseId, actionLabel, toRecipients, ccRecipie
 
     GmailApp.sendEmail(toRecipients, subject, plainBody, options);
     appendAuditRows_([
-      buildAuditRow_(caseId, 'EmailSend', actionLabel, '', `To=${toRecipients}; Cc=${ccRecipients || ''}; Subject=${subject}`),
+      buildAuditRow_(caseId, 'EmailSend', actionLabel, '', `To=${toRecipients}; Cc=${ccRecipients || ''}; Subject=${subject}; InvalidIgnored=${(invalidRecipients || []).join(', ') || '(none)'}`),
     ]);
-    return [];
+    return (invalidRecipients || []).length
+      ? [`Automatic email sent for ${actionLabel}, but these invalid recipients were ignored: ${(invalidRecipients || []).join(', ')}`]
+      : [];
   } catch (error) {
     appendAuditRows_([
-      buildAuditRow_(caseId, 'EmailError', actionLabel, '', String(error && error.message ? error.message : error)),
+      buildAuditRow_(caseId, 'EmailError', actionLabel, '', `Error=${String(error && error.message ? error.message : error)}; InvalidIgnored=${(invalidRecipients || []).join(', ') || '(none)'}`),
     ]);
     return [`Automatic email could not be sent for ${actionLabel}: ${error && error.message ? error.message : error}`];
   }
@@ -1038,19 +1040,49 @@ function splitEmails_(value) {
     .filter(Boolean);
 }
 
+function isValidEmailAddress_(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/i.test(String(value || '').trim());
+}
+
+function parseEmailList_(value) {
+  const valid = [];
+  const invalid = [];
+
+  splitEmails_(value).forEach((token) => {
+    if (isValidEmailAddress_(token)) {
+      valid.push(token);
+    } else {
+      invalid.push(token);
+    }
+  });
+
+  return {
+    valid,
+    invalid,
+  };
+}
+
 function mergeNotificationRecipients_(toRecipients, ccRecipients, preferredToEmail) {
-  const toSet = new Set(splitEmails_(toRecipients));
-  const ccSet = new Set(splitEmails_(ccRecipients));
+  const toParsed = parseEmailList_(toRecipients);
+  const ccParsed = parseEmailList_(ccRecipients);
   const preferred = String(preferredToEmail || '').trim();
+  const toSet = new Set(toParsed.valid);
+  const ccSet = new Set(ccParsed.valid);
+  const invalid = [].concat(toParsed.invalid, ccParsed.invalid);
 
   if (preferred) {
-    toSet.add(preferred);
-    ccSet.delete(preferred);
+    if (isValidEmailAddress_(preferred)) {
+      toSet.add(preferred);
+      ccSet.delete(preferred);
+    } else {
+      invalid.push(preferred);
+    }
   }
 
   return {
     to: [...toSet].join(','),
     cc: [...ccSet].filter((email) => !toSet.has(email)).join(','),
+    invalid,
   };
 }
 
@@ -1073,7 +1105,7 @@ function sendNotificationTest_(caseId) {
     const result = logNotificationSkip_(
       row.CaseID,
       'NotificationTest',
-      `No active service contact or lead evaluator email was available. Resolved To="${recipients.to}" Cc="${recipients.cc}".`
+      `No active service contact or lead evaluator email was available. Resolved To="${recipients.to}" Cc="${recipients.cc}". Invalid recipients ignored: ${recipients.invalid && recipients.invalid.length ? recipients.invalid.join(', ') : '(none)'}.`
     );
     return toHtmlSafeObject_({
       caseId,
@@ -1105,7 +1137,7 @@ function sendNotificationTest_(caseId) {
     `<tr><th align="left">Status</th><td>${escapeHtml_(row.Status)}</td></tr>`,
     '</table>',
   ].join('');
-  const result = sendCaseNotificationEmail_(row.CaseID, 'NotificationTest', recipients.to, recipients.cc, subject, plainBody, htmlBody);
+  const result = sendCaseNotificationEmail_(row.CaseID, 'NotificationTest', recipients.to, recipients.cc, subject, plainBody, htmlBody, recipients.invalid);
 
   return toHtmlSafeObject_({
     caseId,

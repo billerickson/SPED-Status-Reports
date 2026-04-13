@@ -225,6 +225,7 @@ Available v2 case actions:
 
 How they work:
 - `Send Test Notification For Selected Case` resolves the same service-team and lead-evaluator recipients used by milestone updates and attempts a live email send for the selected case row
+  - invalid recipient values are ignored and listed in `AuditLog` instead of blocking the whole email
 - `Due Soon Draft` creates a Gmail draft using the case's current primary deadline.
 - `Overdue Draft` creates a Gmail draft using the same case details but with overdue language.
 - `Create ARD Event` uses `ARD Scheduled Date` and the configured ARD hour/duration settings.
