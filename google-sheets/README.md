@@ -30,6 +30,7 @@ This folder contains a Google Sheets adaptation of the SPED Status Reports workf
 9. Use the `SPED Status Reports` custom menu to open the app.
 
 Because uploads now store files in Google Drive, the manifest also needs the Drive scope from `appsscript.json`.
+V2 Gmail drafts and Calendar events also require Gmail and Calendar scopes, so Apps Script will ask for fresh authorization after you paste the updated files.
 
 ## How To Update Calendars And Dropdown Lists
 Use the `SPED Status Reports` menu in the spreadsheet.
@@ -61,6 +62,19 @@ Use these sheets for each type of maintenance:
   - set `Active = Yes` for evaluators that should appear in dropdowns
 - `DistrictCalendars`
 - `Settings`
+  - v2 communication settings also live here:
+    - `NotificationEmailTo`
+    - `NotificationEmailCc`
+    - `NotificationEmailBcc`
+    - `NotificationReplyTo`
+    - `NotificationFromAlias`
+    - `NotificationSenderName`
+    - `NotificationCalendarId`
+    - `CalendarPopupReminderMinutes`
+    - `DeadlineReminderHour`
+    - `DeadlineReminderDurationMinutes`
+    - `ARDEventHour`
+    - `ARDEventDurationMinutes`
 - `AuditLog`
 - `ArchiveCases`
 - `DueDateTests`
@@ -161,6 +175,35 @@ To remove uploads:
 2. In the uploads list, use `Unlink` to remove the document from the case only.
 3. Use `Delete` to remove the document from the case and send the linked Google Drive file to trash when the script has permission.
 
+## V2 Gmail And Calendar
+The v2 integration is intentionally conservative:
+- Gmail actions create drafts only
+- Calendar actions create events only
+- nothing auto-sends
+- nothing runs on a timer yet
+
+Before using v2:
+1. Open `Settings`.
+2. Fill in `NotificationEmailTo` with the default recipients for draft creation.
+3. Optional: fill in CC, BCC, reply-to, sender name, and Gmail alias settings.
+4. Optional: fill in `NotificationCalendarId` if events should go to a dedicated SPED calendar.
+   If left blank, events go to the authorized user's default calendar.
+5. Save the settings and reauthorize the script if prompted.
+
+Available v2 case actions:
+- `Due Soon Draft`
+- `Overdue Draft`
+- `Create ARD Event`
+- `Deadline Reminder`
+
+How they work:
+- `Due Soon Draft` creates a Gmail draft using the case's current primary deadline.
+- `Overdue Draft` creates a Gmail draft using the same case details but with overdue language.
+- `Create ARD Event` uses `ARD Scheduled Date` and the configured ARD hour/duration settings.
+- `Deadline Reminder` uses the case `PrimaryDeadline` and the configured reminder hour/duration settings.
+
+Each v2 action also writes an entry to `AuditLog`.
+
 To manage saved dashboard views:
 1. Open `DashboardViews`.
 2. Add or edit rows using these columns:
@@ -210,6 +253,8 @@ Bulk admin safeguards now in place:
   - due-date test harness sheet for validating district timeline calculations
   - saved dashboard-view sheets generated from the `DashboardViews` config tab
   - archive and restore confirmations before bulk admin changes run
+  - Gmail draft creation for due-soon and overdue case communication
+  - Calendar event creation for ARD scheduling and deadline reminders
   - status flow:
     - `Referral Received`
     - `Response Sent`

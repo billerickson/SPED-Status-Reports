@@ -144,6 +144,10 @@ function onOpen() {
     .addItem('Refresh Dashboard', 'refreshDashboard')
     .addItem('Open Dashboard', 'openDashboard')
     .addItem('Open Selected Case', 'openSelectedCaseFromActiveRow')
+    .addItem('Create Due Soon Draft For Selected Case', 'createDueSoonDraftForSelectedCase')
+    .addItem('Create Overdue Draft For Selected Case', 'createOverdueDraftForSelectedCase')
+    .addItem('Create ARD Event For Selected Case', 'createArdEventForSelectedCase')
+    .addItem('Create Deadline Reminder For Selected Case', 'createDeadlineReminderForSelectedCase')
     .addSeparator()
     .addItem('Open Districts (Admin)', 'openDistrictsSheet')
     .addItem('Open Campuses (Admin)', 'openCampusesSheet')
@@ -544,6 +548,50 @@ function openSelectedCaseFromActiveRow() {
   showSpedSidebar();
 }
 
+function createDueSoonDraftForSelectedCase() {
+  resetRequestCache_();
+  const selection = getSelectedCaseReference_();
+  if (!selection || selection.location !== 'active') {
+    throw new Error('Select a case row from Cases or a dashboard first.');
+  }
+  const result = createCaseEmailDraft(selection.caseId, 'dueSoon');
+  SpreadsheetApp.getUi().alert(`Draft created: ${result.subject}`);
+  return result;
+}
+
+function createOverdueDraftForSelectedCase() {
+  resetRequestCache_();
+  const selection = getSelectedCaseReference_();
+  if (!selection || selection.location !== 'active') {
+    throw new Error('Select a case row from Cases or a dashboard first.');
+  }
+  const result = createCaseEmailDraft(selection.caseId, 'overdue');
+  SpreadsheetApp.getUi().alert(`Draft created: ${result.subject}`);
+  return result;
+}
+
+function createArdEventForSelectedCase() {
+  resetRequestCache_();
+  const selection = getSelectedCaseReference_();
+  if (!selection || selection.location !== 'active') {
+    throw new Error('Select a case row from Cases or a dashboard first.');
+  }
+  const result = createCaseCalendarEvent(selection.caseId, 'ard');
+  SpreadsheetApp.getUi().alert(`Calendar event created: ${result.title}`);
+  return result;
+}
+
+function createDeadlineReminderForSelectedCase() {
+  resetRequestCache_();
+  const selection = getSelectedCaseReference_();
+  if (!selection || selection.location !== 'active') {
+    throw new Error('Select a case row from Cases or a dashboard first.');
+  }
+  const result = createCaseCalendarEvent(selection.caseId, 'deadlineReminder');
+  SpreadsheetApp.getUi().alert(`Calendar event created: ${result.title}`);
+  return result;
+}
+
 function openDistrictsSheet(adminCode) {
   resetRequestCache_();
   openAdminSheet_(SHEETS.districts, adminCode);
@@ -704,6 +752,101 @@ function refreshDueDateTests() {
   const results = refreshDueDateTests_();
   SpreadsheetApp.getUi().alert(`Due date tests refreshed. ${results.passCount} passed, ${results.failCount} failed, ${results.checkCount} need expected dates.`);
   return results;
+}
+
+function createCaseEmailDraft(caseId, draftType) {
+  resetRequestCache_();
+  ensureWorkbookReady_();
+
+  const record = findCaseRecord_(caseId);
+  if (!record) {
+    throw new Error(`Case not found: ${caseId}`);
+  }
+
+  const emailConfig = getEmailIntegrationConfig_();
+  if (!emailConfig.to) {
+    throw new Error('Set NotificationEmailTo in Settings before creating Gmail drafts.');
+  }
+
+  const row = record.row;
+  const subject = buildCaseDraftSubject_(row, draftType);
+  const plainBody = buildCaseDraftPlainBody_(row, draftType);
+  const htmlBody = buildCaseDraftHtmlBody_(row, draftType);
+  const options = {
+    htmlBody,
+  };
+
+  if (emailConfig.cc) {
+    options.cc = emailConfig.cc;
+  }
+  if (emailConfig.bcc) {
+    options.bcc = emailConfig.bcc;
+  }
+  if (emailConfig.replyTo) {
+    options.replyTo = emailConfig.replyTo;
+  }
+  if (emailConfig.alias) {
+    options.from = emailConfig.alias;
+  }
+  if (emailConfig.senderName) {
+    options.name = emailConfig.senderName;
+  }
+
+  const draft = GmailApp.createDraft(emailConfig.to, subject, plainBody, options);
+  appendAuditRows_([
+    buildAuditRow_(caseId, 'GmailDraft', draftType, '', `DraftID=${safeMethodCall_(draft, 'getId', '')}; To=${emailConfig.to}; Subject=${subject}`),
+  ]);
+
+  return toHtmlSafeObject_({
+    caseId,
+    draftType,
+    subject,
+    to: emailConfig.to,
+    draftId: safeMethodCall_(draft, 'getId', ''),
+  });
+}
+
+function createCaseCalendarEvent(caseId, eventType) {
+  resetRequestCache_();
+  ensureWorkbookReady_();
+
+  const record = findCaseRecord_(caseId);
+  if (!record) {
+    throw new Error(`Case not found: ${caseId}`);
+  }
+
+  const row = record.row;
+  const calendar = getNotificationCalendar_();
+  const eventConfig = buildCaseCalendarEventConfig_(row, eventType);
+  const options = {
+    description: eventConfig.description,
+  };
+  if (eventConfig.location) {
+    options.location = eventConfig.location;
+  }
+
+  const event = calendar.createEvent(eventConfig.title, eventConfig.startTime, eventConfig.endTime, options);
+  const reminderMinutes = getNumericSetting_('CalendarPopupReminderMinutes', 30);
+  if (reminderMinutes >= 0) {
+    try {
+      event.addPopupReminder(reminderMinutes);
+    } catch (error) {
+      // Some calendars may reject reminder creation; the event itself is still valid.
+    }
+  }
+
+  appendAuditRows_([
+    buildAuditRow_(caseId, 'CalendarEvent', eventType, '', `EventID=${safeMethodCall_(event, 'getId', '')}; Title=${eventConfig.title}; Start=${formatDateTime_(eventConfig.startTime)}`),
+  ]);
+
+  return toHtmlSafeObject_({
+    caseId,
+    eventType,
+    title: eventConfig.title,
+    eventId: safeMethodCall_(event, 'getId', ''),
+    startTime: eventConfig.startTime,
+    endTime: eventConfig.endTime,
+  });
 }
 
 function showAllSheets(adminCode) {
@@ -1513,6 +1656,195 @@ function seedSettings_() {
   ensureSettingRow_('PinkDeadlineColor', '#f4cccc', 'Color used when a deadline is within the warning window.');
   ensureSettingRow_('RedDeadlineColor', '#ff9999', 'Color used when a due date is missed.');
   ensureSettingRow_('UploadsFolderIdOverride', '', 'Optional Google Drive folder ID used for uploaded documents.');
+  ensureSettingRow_('NotificationEmailTo', '', 'Comma-separated email recipients used for Gmail draft creation.');
+  ensureSettingRow_('NotificationEmailCc', '', 'Optional comma-separated CC recipients for Gmail drafts.');
+  ensureSettingRow_('NotificationEmailBcc', '', 'Optional comma-separated BCC recipients for Gmail drafts.');
+  ensureSettingRow_('NotificationReplyTo', '', 'Optional reply-to address for Gmail drafts.');
+  ensureSettingRow_('NotificationFromAlias', '', 'Optional Gmail alias used when drafting messages.');
+  ensureSettingRow_('NotificationSenderName', 'SPED Status Reports', 'Optional display name used for Gmail drafts.');
+  ensureSettingRow_('NotificationCalendarId', '', 'Optional Calendar ID used for created events. Leave blank to use the default calendar.');
+  ensureSettingRow_('CalendarPopupReminderMinutes', '30', 'Popup reminder lead time for created calendar events.');
+  ensureSettingRow_('DeadlineReminderHour', '8', 'Hour of day used for deadline reminder events.');
+  ensureSettingRow_('DeadlineReminderDurationMinutes', '30', 'Length of deadline reminder events in minutes.');
+  ensureSettingRow_('ARDEventHour', '9', 'Hour of day used for ARD scheduled events.');
+  ensureSettingRow_('ARDEventDurationMinutes', '60', 'Length of ARD events in minutes.');
+}
+
+function getEmailIntegrationConfig_() {
+  return {
+    to: String(getSettingValue_('NotificationEmailTo', '') || '').trim(),
+    cc: String(getSettingValue_('NotificationEmailCc', '') || '').trim(),
+    bcc: String(getSettingValue_('NotificationEmailBcc', '') || '').trim(),
+    replyTo: String(getSettingValue_('NotificationReplyTo', '') || '').trim(),
+    alias: String(getSettingValue_('NotificationFromAlias', '') || '').trim(),
+    senderName: String(getSettingValue_('NotificationSenderName', 'SPED Status Reports') || '').trim(),
+  };
+}
+
+function getNotificationCalendar_() {
+  const calendarId = String(getSettingValue_('NotificationCalendarId', '') || '').trim();
+  if (!calendarId) {
+    return CalendarApp.getDefaultCalendar();
+  }
+
+  const calendar = CalendarApp.getCalendarById(calendarId);
+  if (!calendar) {
+    throw new Error('NotificationCalendarId in Settings does not match an accessible calendar.');
+  }
+  return calendar;
+}
+
+function buildCaseDraftSubject_(row, draftType) {
+  const deadline = formatDate_(row.PrimaryDeadline);
+  const prefix = draftType === 'overdue' ? 'SPED Overdue' : 'SPED Due Soon';
+  return `${prefix}: ${row.StudentName} (${row.CaseID})${deadline ? ` - ${deadline}` : ''}`;
+}
+
+function buildCaseDraftPlainBody_(row, draftType) {
+  const introduction = draftType === 'overdue'
+    ? 'This case has passed its current primary deadline.'
+    : 'This case is approaching its current primary deadline.';
+  return [
+    introduction,
+    '',
+    `Student: ${row.StudentName}`,
+    `Case ID: ${row.CaseID}`,
+    `Case Type: ${row.CaseType}`,
+    `Student ID: ${row.StudentID}`,
+    `Campus: ${row.Campus}`,
+    `District: ${row.District}`,
+    `Lead Evaluator: ${row.LeadEvaluator}`,
+    `Status: ${row.Status}`,
+    `Primary Deadline: ${formatDate_(row.PrimaryDeadline)}`,
+    `Response Due: ${formatDate_(row.ResponseDueDate)}`,
+    `Consent Date: ${formatDate_(row.ActualConsentDate)}`,
+    `Evaluation Due: ${formatDate_(getEvaluationDueDate_(row))}`,
+    `Evaluation Date: ${formatDate_(row.ActualFIIEDate)}`,
+    `ARD Due: ${formatDate_(row.ProjectedARDDueDate)}`,
+    `ARD Scheduled: ${formatDate_(row.ARDScheduledDate)}`,
+    `ARD Date: ${formatDate_(row.ActualARDDate)}`,
+    '',
+    `Service Notes: ${row.ServiceNotes || ''}`,
+    `Variance Explanation: ${row.VarianceExplanation || ''}`,
+  ].join('\n');
+}
+
+function buildCaseDraftHtmlBody_(row, draftType) {
+  const introduction = draftType === 'overdue'
+    ? 'This case has passed its current primary deadline.'
+    : 'This case is approaching its current primary deadline.';
+  const items = [
+    ['Student', row.StudentName],
+    ['Case ID', row.CaseID],
+    ['Case Type', row.CaseType],
+    ['Student ID', row.StudentID],
+    ['Campus', row.Campus],
+    ['District', row.District],
+    ['Lead Evaluator', row.LeadEvaluator],
+    ['Status', row.Status],
+    ['Primary Deadline', formatDate_(row.PrimaryDeadline)],
+    ['Response Due', formatDate_(row.ResponseDueDate)],
+    ['Consent Date', formatDate_(row.ActualConsentDate)],
+    ['Evaluation Due', formatDate_(getEvaluationDueDate_(row))],
+    ['Evaluation Date', formatDate_(row.ActualFIIEDate)],
+    ['ARD Due', formatDate_(row.ProjectedARDDueDate)],
+    ['ARD Scheduled', formatDate_(row.ARDScheduledDate)],
+    ['ARD Date', formatDate_(row.ActualARDDate)],
+  ];
+
+  return [
+    `<p>${escapeHtml_(introduction)}</p>`,
+    '<table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse;">',
+    ...items.map((item) => `<tr><th align="left">${escapeHtml_(item[0])}</th><td>${escapeHtml_(item[1])}</td></tr>`),
+    '</table>',
+    `<p><strong>Service Notes:</strong> ${escapeHtml_(row.ServiceNotes || '')}</p>`,
+    `<p><strong>Variance Explanation:</strong> ${escapeHtml_(row.VarianceExplanation || '')}</p>`,
+  ].join('');
+}
+
+function buildCaseCalendarEventConfig_(row, eventType) {
+  if (eventType === 'ard') {
+    const startDate = parseDate_(row.ARDScheduledDate);
+    if (!startDate) {
+      throw new Error('Enter ARD Scheduled Date before creating an ARD calendar event.');
+    }
+    const startTime = setLocalTime_(startDate, getNumericSetting_('ARDEventHour', 9), 0);
+    const endTime = addMinutes_(startTime, getNumericSetting_('ARDEventDurationMinutes', 60));
+    return {
+      title: `ARD Meeting: ${row.StudentName} (${row.CaseID})`,
+      startTime,
+      endTime,
+      location: row.Campus || '',
+      description: buildCaseEventDescription_(row, 'ARD meeting'),
+    };
+  }
+
+  const deadlineDate = parseDate_(row.PrimaryDeadline);
+  if (!deadlineDate) {
+    throw new Error('This case does not have a primary deadline to place on the calendar.');
+  }
+  const reminderStart = setLocalTime_(deadlineDate, getNumericSetting_('DeadlineReminderHour', 8), 0);
+  return {
+    title: `SPED Deadline Reminder: ${row.StudentName} (${row.CaseID})`,
+    startTime: reminderStart,
+    endTime: addMinutes_(reminderStart, getNumericSetting_('DeadlineReminderDurationMinutes', 30)),
+    location: row.Campus || '',
+    description: buildCaseEventDescription_(row, 'Primary deadline reminder'),
+  };
+}
+
+function buildCaseEventDescription_(row, eventLabel) {
+  return [
+    `${eventLabel}`,
+    '',
+    `Student: ${row.StudentName}`,
+    `Case ID: ${row.CaseID}`,
+    `Case Type: ${row.CaseType}`,
+    `Student ID: ${row.StudentID}`,
+    `Campus: ${row.Campus}`,
+    `District: ${row.District}`,
+    `Lead Evaluator: ${row.LeadEvaluator}`,
+    `Status: ${row.Status}`,
+    `Primary Deadline: ${formatDate_(row.PrimaryDeadline)}`,
+    `ARD Scheduled: ${formatDate_(row.ARDScheduledDate)}`,
+    `ARD Due: ${formatDate_(row.ProjectedARDDueDate)}`,
+    `Service Notes: ${row.ServiceNotes || ''}`,
+    `Variance Explanation: ${row.VarianceExplanation || ''}`,
+  ].join('\n');
+}
+
+function setLocalTime_(dateValue, hour, minute) {
+  const date = parseDate_(dateValue);
+  if (!date) {
+    return '';
+  }
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), Number(hour), Number(minute), 0, 0);
+}
+
+function addMinutes_(dateValue, minutes) {
+  const output = new Date(dateValue);
+  output.setMinutes(output.getMinutes() + Number(minutes));
+  return output;
+}
+
+function safeMethodCall_(target, methodName, fallbackValue) {
+  if (!target || typeof target[methodName] !== 'function') {
+    return fallbackValue;
+  }
+  try {
+    return target[methodName]();
+  } catch (error) {
+    return fallbackValue;
+  }
+}
+
+function escapeHtml_(value) {
+  return String(value === undefined || value === null ? '' : value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function ensureSettingRow_(settingKey, settingValue, description) {

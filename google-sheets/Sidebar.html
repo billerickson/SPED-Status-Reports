@@ -382,6 +382,21 @@
           <div><strong>Projected ARD Due:</strong> <span id="tlARD"></span></div>
         </div>
 
+        <div class="card" style="margin-bottom:0;">
+          <h3>Communications</h3>
+          <div class="grid">
+            <div class="muted">V2 actions create Gmail drafts and Calendar events only. They do not auto-send.</div>
+            <div class="row">
+              <button class="secondary" type="button" onclick="createCaseDraft('dueSoon')">Due Soon Draft</button>
+              <button class="secondary" type="button" onclick="createCaseDraft('overdue')">Overdue Draft</button>
+            </div>
+            <div class="row">
+              <button class="secondary" type="button" onclick="createCaseEvent('ard')">Create ARD Event</button>
+              <button class="secondary" type="button" onclick="createCaseEvent('deadlineReminder')">Deadline Reminder</button>
+            </div>
+          </div>
+        </div>
+
         <div class="row">
           <button onclick="saveCase()">Save</button>
           <button class="secondary" onclick="resetEditor()">Cancel</button>
@@ -938,6 +953,35 @@
           })
           .withFailureHandler(handleError)
           .removeCaseDocument(state.selectedCaseId, documentId, deleteFromDrive);
+      }
+
+      function createCaseDraft(draftType) {
+        if (!state.selectedCaseId) {
+          setStatus('Save or load the case before creating Gmail drafts.', 'error');
+          return;
+        }
+
+        const action = draftType === 'overdue' ? 'createCaseEmailDraft' : 'createCaseEmailDraft';
+        google.script.run
+          .withSuccessHandler((result) => {
+            setStatus(`Created draft "${result.subject}".`, 'success');
+          })
+          .withFailureHandler(handleError)
+          [action](state.selectedCaseId, draftType);
+      }
+
+      function createCaseEvent(eventType) {
+        if (!state.selectedCaseId) {
+          setStatus('Save or load the case before creating calendar events.', 'error');
+          return;
+        }
+
+        google.script.run
+          .withSuccessHandler((result) => {
+            setStatus(`Created calendar event "${result.title}".`, 'success');
+          })
+          .withFailureHandler(handleError)
+          .createCaseCalendarEvent(state.selectedCaseId, eventType);
       }
 
       function renderCaseResults(targetId, results, emptyMessage) {

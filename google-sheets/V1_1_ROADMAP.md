@@ -25,6 +25,6 @@
 - add archive/restore audit summaries to the dashboard cards
 
 ## V2 Direction
-- Gmail draft generation after milestone updates
+- Gmail draft generation for due-soon and overdue case communication
 - Google Calendar event creation for upcoming deadlines and ARD meetings
 - opt-in reminders with district-safe message templates
