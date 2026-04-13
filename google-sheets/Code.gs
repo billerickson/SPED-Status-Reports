@@ -561,7 +561,14 @@ function renderDashboardSummary_(sheet, summary) {
   cards.forEach((card, index) => {
     const column = index * 2 + 1;
     sheet.getRange(4, column, 1, 2).merge().setValue(card[0]).setFontWeight('bold').setBackground(backgrounds[index]);
-    sheet.getRange(5, column, 1, 2).merge().setValue(card[1]).setFontSize(16).setFontWeight('bold').setBackground('#ffffff');
+    sheet
+      .getRange(5, column, 1, 2)
+      .merge()
+      .setValue(card[1])
+      .setFontSize(16)
+      .setFontWeight('bold')
+      .setBackground('#ffffff')
+      .setNumberFormat('0');
   });
 }
 
