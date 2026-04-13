@@ -449,7 +449,7 @@
         document.getElementById('adminSection').classList.add('hidden');
         document.getElementById('editorTitle').textContent = `${document.getElementById('caseType').value} Intake`;
         resetEditor(false);
-        toggleCaseTypeFields();
+        toggleCaseTypeFields(true);
       }
 
       function startUpdate() {
@@ -460,7 +460,7 @@
         document.getElementById('adminSection').classList.add('hidden');
         document.getElementById('editorTitle').textContent = `${document.getElementById('caseType').value} Milestone Update`;
         resetEditor(false);
-        toggleCaseTypeFields();
+        toggleCaseTypeFields(true);
         document.getElementById('searchStudentId').focus();
       }
 
@@ -468,7 +468,7 @@
         document.getElementById('adminSection').classList.remove('hidden');
       }
 
-      function toggleCaseTypeFields() {
+      function toggleCaseTypeFields(shouldPreview = true) {
         const isInitial = document.getElementById('caseType').value === 'Initial';
         const isNewInitial = state.mode === 'new' && isInitial;
         document.getElementById('referralWrap').classList.toggle('hidden', !isInitial);
@@ -477,7 +477,9 @@
         document.getElementById('milestoneSection').classList.toggle('hidden', isNewInitial);
         document.getElementById('serviceSection').classList.toggle('hidden', isNewInitial);
         document.getElementById('serviceNotesWrap').classList.toggle('hidden', isNewInitial);
-        updateTimelinePreview();
+        if (shouldPreview) {
+          updateTimelinePreview();
+        }
       }
 
       function collectPayload() {
@@ -613,7 +615,7 @@
         });
 
         renderTimeline(detail.timelinePreview || {});
-        toggleCaseTypeFields();
+        toggleCaseTypeFields(false);
       }
 
       function saveCase() {
@@ -720,7 +722,7 @@
         setStatus(error && error.message ? error.message : String(error), 'error');
       }
 
-      document.getElementById('caseType').addEventListener('change', toggleCaseTypeFields);
+      document.getElementById('caseType').addEventListener('change', () => toggleCaseTypeFields(true));
     </script>
   </body>
 </html>

@@ -129,7 +129,7 @@ function showSpedSidebar() {
 }
 
 function getAppBootstrap() {
-  ensureWorkbookScaffold_();
+  ensureWorkbookReady_();
 
   return {
     caseTypes: [CASE_TYPES.initial, CASE_TYPES.reevaluation],
@@ -144,6 +144,16 @@ function getAppBootstrap() {
       email: row.Email,
     })),
   };
+}
+
+function ensureWorkbookReady_() {
+  Object.values(SHEETS).forEach((sheetName) => {
+    if (!SpreadsheetApp.getActive().getSheetByName(sheetName)) {
+      throw new Error(
+        'Workbook setup is incomplete. Run "SPED Status Reports -> Install / Repair Workbook" and try again.'
+      );
+    }
+  });
 }
 
 function previewTimeline(input) {
@@ -178,10 +188,11 @@ function searchCases(studentId, caseType) {
 }
 
 function getCaseDetails(caseId) {
-  const row = findCaseRow_(caseId);
-  if (!row) {
+  const record = findCaseRecord_(caseId);
+  if (!record) {
     throw new Error(`Case not found: ${caseId}`);
   }
+  const row = record.row;
 
   row.documentsText = getCaseDocumentsText_(caseId);
   row.timelinePreview = normalizeTimelineForUi_(
@@ -216,8 +227,7 @@ function saveNewCase(payload) {
 
     appendRow_(SHEETS.cases, row, CASE_HEADERS);
     replaceCaseDocuments_(caseId, payload.documentLinks || '');
-    refreshDashboard();
-    SpreadsheetApp.flush();
+    refreshDashboard_(false);
 
     return {
       ok: true,
@@ -225,7 +235,6 @@ function saveNewCase(payload) {
       timeline: normalizeTimelineForUi_(timeline),
     };
   } finally {
-    SpreadsheetApp.flush();
     lock.releaseLock();
   }
 }
@@ -237,10 +246,11 @@ function updateExistingCase(payload) {
   try {
     validatePayload_(payload, true);
 
-    const existing = findCaseRow_(payload.caseId);
-    if (!existing) {
+    const existingRecord = findCaseRecord_(payload.caseId);
+    if (!existingRecord) {
       throw new Error(`Case not found: ${payload.caseId}`);
     }
+    const existing = existingRecord.row;
 
     if (
       duplicateOpenCaseExists_(payload.studentId, existing.CaseType, payload.caseId)
@@ -296,10 +306,9 @@ function updateExistingCase(payload) {
       merged.ManualPrimaryDeadline
     );
 
-    writeCaseRow_(payload.caseId, merged);
+    writeCaseRowByIndex_(existingRecord.rowIndex, merged);
     replaceCaseDocuments_(payload.caseId, payload.documentLinks || '');
-    refreshDashboard();
-    SpreadsheetApp.flush();
+    refreshDashboard_(false);
 
     return {
       ok: true,
@@ -307,7 +316,6 @@ function updateExistingCase(payload) {
       timeline: normalizeTimelineForUi_(timeline),
     };
   } finally {
-    SpreadsheetApp.flush();
     lock.releaseLock();
   }
 }
@@ -357,16 +365,13 @@ function applyAdminSheetProtection(adminCode) {
 
 function refreshDashboard() {
   ensureWorkbookScaffold_();
+  refreshDashboard_(true);
+}
 
+function refreshDashboard_(applyLayout) {
   const ss = SpreadsheetApp.getActive();
   const sheet = ss.getSheetByName(SHEETS.dashboard);
   const cases = getTableRows_(SHEETS.cases, CASE_HEADERS);
-
-  sheet.clear();
-  sheet.getRange(1, 1).setValue('SPED Status Reports Dashboard').setFontWeight('bold').setFontSize(16);
-  sheet
-    .getRange(2, 1)
-    .setValue('Use built-in filters on row 4 to filter by district, campus, evaluator, case type, or status.');
 
   const headers = [
     'Case ID',
@@ -385,7 +390,16 @@ function refreshDashboard() {
     'Updated At',
   ];
 
-  sheet.getRange(4, 1, 1, headers.length).setValues([headers]).setFontWeight('bold');
+  if (applyLayout || sheet.getRange(4, 1).getValue() !== headers[0]) {
+    sheet.clear();
+    sheet.getRange(1, 1).setValue('SPED Status Reports Dashboard').setFontWeight('bold').setFontSize(16);
+    sheet
+      .getRange(2, 1)
+      .setValue('Use built-in filters on row 4 to filter by district, campus, evaluator, case type, or status.');
+    sheet.getRange(4, 1, 1, headers.length).setValues([headers]).setFontWeight('bold');
+  } else if (sheet.getLastRow() > 4) {
+    sheet.getRange(5, 1, sheet.getLastRow() - 4, headers.length).clearContent().setBackground('#ffffff');
+  }
 
   const output = cases.map((row) => [
     row.CaseID,
@@ -413,7 +427,9 @@ function refreshDashboard() {
     sheet.getFilter().remove();
   }
   sheet.getRange(4, 1, Math.max(output.length + 1, 2), headers.length).createFilter();
-  sheet.autoResizeColumns(1, headers.length);
+  if (applyLayout) {
+    sheet.autoResizeColumns(1, headers.length);
+  }
 }
 
 function ensureWorkbookScaffold_(options) {
@@ -641,20 +657,10 @@ function appendRow_(sheetName, objectRow, headers) {
   sheet.appendRow(values);
 }
 
-function writeCaseRow_(caseId, objectRow) {
+function writeCaseRowByIndex_(rowIndex, objectRow) {
   const sheet = SpreadsheetApp.getActive().getSheetByName(SHEETS.cases);
-  const values = sheet.getDataRange().getValues();
-  const headerMap = getHeaderMap_(CASE_HEADERS);
-
-  for (let rowIndex = 1; rowIndex < values.length; rowIndex += 1) {
-    if (String(values[rowIndex][headerMap.CaseID]).trim() === String(caseId).trim()) {
-      const rowValues = CASE_HEADERS.map((header) => (objectRow[header] === undefined ? '' : objectRow[header]));
-      sheet.getRange(rowIndex + 1, 1, 1, CASE_HEADERS.length).setValues([rowValues]);
-      return;
-    }
-  }
-
-  throw new Error(`Case not found: ${caseId}`);
+  const rowValues = CASE_HEADERS.map((header) => (objectRow[header] === undefined ? '' : objectRow[header]));
+  sheet.getRange(rowIndex, 1, 1, CASE_HEADERS.length).setValues([rowValues]);
 }
 
 function getTableRows_(sheetName, headers) {
@@ -792,6 +798,7 @@ function buildProjectedDates_(input) {
   const actualFiiEDate = parseDate_(input.actualFIIEDate);
   const reevalDueDate = parseDate_(input.reevalDueDate);
   const calendarLookup = district ? getDistrictCalendarLookup_(district) : {};
+  const districtConfig = getDistrictConfig_(district);
 
   const timeline = {
     responseDueDate: '',
@@ -801,9 +808,9 @@ function buildProjectedDates_(input) {
   };
 
   if (caseType === CASE_TYPES.initial && referralDate) {
-    const responseDays = getDistrictRule_(district, 'ResponseSchoolDays', 15);
-    const fiieDays = getDistrictRule_(district, 'FIIESchoolDays', 45);
-    const ardDays = getDistrictRule_(district, 'ARDCalendarDays', 30);
+    const responseDays = districtConfig.ResponseSchoolDays;
+    const fiieDays = districtConfig.FIIESchoolDays;
+    const ardDays = districtConfig.ARDCalendarDays;
 
     const responseDueDate = addInstructionalDays_(referralDate, responseDays, district, calendarLookup);
     const consentAnchor = actualConsentDate || responseDueDate;
@@ -817,7 +824,7 @@ function buildProjectedDates_(input) {
   }
 
   if (caseType === CASE_TYPES.reevaluation && reevalDueDate) {
-    const ardDays = getDistrictRule_(district, 'ARDCalendarDays', 30);
+    const ardDays = districtConfig.ARDCalendarDays;
     timeline.projectedFiiEDueDate = reevalDueDate;
     timeline.projectedArdDueDate = addCalendarDays_(actualFiiEDate || reevalDueDate, ardDays);
   }
@@ -825,13 +832,28 @@ function buildProjectedDates_(input) {
   return timeline;
 }
 
-function getDistrictRule_(districtName, ruleColumn, fallbackValue) {
+function getDistrictConfig_(districtName) {
+  const defaults = {
+    ResponseSchoolDays: 15,
+    FIIESchoolDays: 45,
+    ARDCalendarDays: 30,
+  };
+
+  if (!districtName) {
+    return defaults;
+  }
+
   const rows = getTableRows_(SHEETS.districts, DISTRICT_HEADERS);
   const row = rows.find((item) => String(item.District).trim() === String(districtName).trim());
-  if (!row || row[ruleColumn] === '') {
-    return fallbackValue;
+  if (!row) {
+    return defaults;
   }
-  return Number(row[ruleColumn]) || fallbackValue;
+
+  return {
+    ResponseSchoolDays: Number(row.ResponseSchoolDays) || defaults.ResponseSchoolDays,
+    FIIESchoolDays: Number(row.FIIESchoolDays) || defaults.FIIESchoolDays,
+    ARDCalendarDays: Number(row.ARDCalendarDays) || defaults.ARDCalendarDays,
+  };
 }
 
 function addInstructionalDays_(startDate, daysToAdd, districtName, calendarLookup) {
@@ -883,11 +905,12 @@ function getDistrictCalendarLookup_(districtName) {
     return lookup;
   }
 
-  const values = sheet.getRange(2, 1, lastRow - 1, lastColumn).getValues();
-  values.forEach((row) => {
+  const dateValues = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+  const districtValues = sheet.getRange(2, districtColumn + 1, lastRow - 1, 1).getValues();
+  dateValues.forEach((row, index) => {
     const dateValue = parseDate_(row[0]);
     if (dateValue) {
-      lookup[isoDateKey_(dateValue)] = String(row[districtColumn] || '').trim();
+      lookup[isoDateKey_(dateValue)] = String(districtValues[index][0] || '').trim();
     }
   });
 
@@ -1023,9 +1046,26 @@ function duplicateOpenCaseExists_(studentId, caseType, ignoreCaseId) {
   });
 }
 
-function findCaseRow_(caseId) {
-  const rows = getTableRows_(SHEETS.cases, CASE_HEADERS);
-  return rows.find((row) => String(row.CaseID).trim() === String(caseId).trim()) || null;
+function findCaseRecord_(caseId) {
+  const sheet = SpreadsheetApp.getActive().getSheetByName(SHEETS.cases);
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) {
+    return null;
+  }
+
+  const headerMap = getHeaderMap_(CASE_HEADERS);
+  const values = sheet.getRange(2, 1, lastRow - 1, CASE_HEADERS.length).getValues();
+
+  for (let index = 0; index < values.length; index += 1) {
+    if (String(values[index][headerMap.CaseID]).trim() === String(caseId).trim()) {
+      return {
+        row: toObject_(CASE_HEADERS, values[index]),
+        rowIndex: index + 2,
+      };
+    }
+  }
+
+  return null;
 }
 
 function replaceCaseDocuments_(caseId, rawDocumentText) {
