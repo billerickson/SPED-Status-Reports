@@ -182,6 +182,10 @@ function previewTimeline(input) {
   return normalizeTimelineForUi_(buildProjectedDates_(input));
 }
 
+function getLateDateWarnings(payload) {
+  return getLateDateWarnings_(payload, buildProjectedDates_(payload));
+}
+
 function searchCases(studentId, caseType) {
   const normalizedStudentId = normalizeStudentId_(studentId);
   if (!normalizedStudentId) {
@@ -956,6 +960,14 @@ function validatePayload_(payload, requireCaseId) {
 
 function validateVarianceNotes_(payload, timeline) {
   const notes = String(payload.serviceNotes || '').trim();
+  const lateDates = getLateDateWarnings_(payload, timeline);
+
+  if (lateDates.length && !notes) {
+    throw new Error(`Notes are required when actual dates are later than due dates: ${lateDates.join(', ')}.`);
+  }
+}
+
+function getLateDateWarnings_(payload, timeline) {
   const lateDates = [];
   const responseSentDate = parseDate_(payload.responseSentDate);
   const actualConsentDate = parseDate_(payload.actualConsentDate);
@@ -979,9 +991,7 @@ function validateVarianceNotes_(payload, timeline) {
     lateDates.push('ARD Date');
   }
 
-  if (lateDates.length && !notes) {
-    throw new Error(`Notes are required when actual dates are later than due dates: ${lateDates.join(', ')}.`);
-  }
+  return lateDates;
 }
 
 function buildProjectedDates_(input) {

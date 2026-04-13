@@ -666,17 +666,36 @@
       }
 
       function saveCase() {
-        const payload = collectPayload();
-        const action = state.mode === 'update' ? 'updateExistingCase' : 'saveNewCase';
-
         google.script.run
-          .withSuccessHandler((result) => {
-            state.selectedCaseId = result.caseId;
-            renderTimeline(result.timeline || {});
-            setStatus(`Saved ${result.caseId}.`, 'success');
+          .withSuccessHandler((lateDates) => {
+            const currentNotes = document.getElementById('serviceNotes').value.trim();
+            if (lateDates.length && !currentNotes) {
+              const explanation = window.prompt(
+                `A variance explanation is required before saving because these dates are late: ${lateDates.join(', ')}.\n\nEnter the variance explanation:`
+              );
+
+              if (!explanation || !explanation.trim()) {
+                setStatus('Save canceled. A variance explanation is required for late dates.', 'error');
+                return;
+              }
+
+              document.getElementById('serviceNotes').value = explanation.trim();
+            }
+
+            const payload = collectPayload();
+            const action = state.mode === 'update' ? 'updateExistingCase' : 'saveNewCase';
+
+            google.script.run
+              .withSuccessHandler((result) => {
+                state.selectedCaseId = result.caseId;
+                renderTimeline(result.timeline || {});
+                setStatus(`Saved ${result.caseId}.`, 'success');
+              })
+              .withFailureHandler(handleError)
+              [action](payload);
           })
           .withFailureHandler(handleError)
-          [action](payload);
+          .getLateDateWarnings(collectPayload());
       }
 
       function triggerDocumentUpload() {
