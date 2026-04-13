@@ -39,6 +39,7 @@ Use the `SPED Status Reports` menu in the spreadsheet.
    - `Open Campuses (Admin)`
    - `Open Evaluators (Admin)`
    - `Open Calendars (Admin)`
+   - `Open Due Date Tests (Admin)`
    - `Open Settings (Admin)`
    - `Open Audit Log (Admin)`
    - `Open Archive (Admin)`
@@ -61,6 +62,7 @@ Use these sheets for each type of maintenance:
 - `Settings`
 - `AuditLog`
 - `ArchiveCases`
+- `DueDateTests`
 - `SummaryByCaseType`
 - `SummaryByEvaluator`
 - `SummaryByDistrictCaseType`
@@ -110,6 +112,7 @@ The data is stored inside this same Google Sheet on visible protected tabs:
 - `DistrictCalendars`
 - `Settings`
 - `AuditLog`
+- `DueDateTests`
 
 They are visible to everyone who can open the spreadsheet.
 Direct sheet edits are limited by Google Sheets protection to the admin accounts listed in `ADMIN_EDITOR_EMAILS`.
@@ -136,6 +139,25 @@ To restore an archived case:
 3. Use `SPED Status Reports -> Restore Selected Archived Case (Admin)` or the sidebar admin button.
 4. Enter the admin code when prompted.
 
+To run the due-date validation harness:
+1. Open `DueDateTests`.
+2. Enter or update the expected due dates for any scenarios you want to verify.
+3. Run `SPED Status Reports -> Refresh Due Date Tests`.
+4. Review the `Result` column:
+   - `PASS` means the calculated dates matched the expected dates
+   - `FAIL` means one or more expected dates did not match
+   - `CHECK` means expected dates have not been filled in yet
+
+To use the quick lists in the sidebar:
+1. Click `Overdue` to load all open overdue cases.
+2. Click `Due This Week` to load cases due in the next 7 days.
+3. Choose an evaluator and click `My Evaluator Cases` to load that evaluator's active cases.
+
+To remove uploads:
+1. Open the case in the sidebar.
+2. In the uploads list, use `Unlink` to remove the document from the case only.
+3. Use `Delete` to remove the document from the case and send the linked Google Drive file to trash when the script has permission.
+
 ## Behavior changes from Excel
 - The app opens from a custom Google Sheets menu instead of `Workbook_Open`.
 - Forms are rendered in a sidebar using HTML Service instead of VBA `UserForm`s.
@@ -160,6 +182,9 @@ To restore an archived case:
   - admin archive flow for completed cases
   - restore flow for archived cases
   - selected-row case opening from dashboards and the `Cases` sheet
+  - quick sidebar lists for overdue, due-this-week, and evaluator-specific active cases
+  - upload unlink/delete controls from the sidebar
+  - due-date test harness sheet for validating district timeline calculations
   - status flow:
     - `Referral Received`
     - `Response Sent`

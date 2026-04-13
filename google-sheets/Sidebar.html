@@ -160,6 +160,28 @@
         background: #e8f0fe;
       }
 
+      .result-row {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+      }
+
+      .result-main {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .result-actions {
+        display: flex;
+        gap: 6px;
+      }
+
+      .result-actions button {
+        width: auto;
+        padding: 6px 8px;
+        font-size: 12px;
+      }
+
       .status {
         margin: 8px 0 12px;
         padding: 8px 10px;
@@ -201,6 +223,26 @@
           <button class="secondary" onclick="openSelectedRowCase()">Open Selected Row</button>
           <button class="secondary" onclick="refreshDashboard()">Refresh Dashboard</button>
         </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Quick Lists</h2>
+      <div class="grid">
+        <div class="row">
+          <button class="secondary" onclick="loadQuickList('overdue')">Overdue</button>
+          <button class="secondary" onclick="loadQuickList('dueThisWeek')">Due This Week</button>
+        </div>
+        <div class="grid two">
+          <div>
+            <label for="quickEvaluator">Evaluator</label>
+            <select id="quickEvaluator"></select>
+          </div>
+          <div style="align-self:end;">
+            <button class="secondary" onclick="loadQuickList('myCases')">My Evaluator Cases</button>
+          </div>
+        </div>
+        <div id="quickListResults" class="result-list"></div>
       </div>
     </div>
 
@@ -382,6 +424,7 @@
         <div class="row">
           <button class="secondary" onclick="runOpenAdminSheet('settings')">Open Settings</button>
           <button class="secondary" onclick="runOpenAdminSheet('audit')">Open Audit Log</button>
+          <button class="secondary" onclick="runOpenAdminSheet('tests')">Open Due Date Tests</button>
         </div>
         <div class="row">
           <button class="secondary" onclick="runOpenAdminSheet('archive')">Open Archive</button>
@@ -455,6 +498,10 @@
         fillSelect('district', bootstrap.districts.map((value) => ({ value, label: value })), true);
         fillSelect('campus', bootstrap.campuses.map((item) => ({ value: item.campus, label: item.campus })), true);
         refreshEvaluatorOptions();
+        fillSelect('quickEvaluator', bootstrap.evaluators.map((item) => ({
+          value: item.evaluator,
+          label: item.evaluator,
+        })), true);
 
         const services = document.getElementById('services');
         services.innerHTML = '';
@@ -618,21 +665,7 @@
 
       function renderSearchResults(results) {
         state.searchResults = results;
-        const wrap = document.getElementById('searchResults');
-        wrap.innerHTML = '';
-
-        if (!results.length) {
-          wrap.innerHTML = '<div class="result-item">No matching cases found.</div>';
-          return;
-        }
-
-        results.forEach((item) => {
-          const div = document.createElement('div');
-          div.className = 'result-item';
-          div.textContent = `${item.caseId} | ${item.studentName} | ${item.status}`;
-          div.onclick = () => loadCase(item.caseId, div);
-          wrap.appendChild(div);
-        });
+        renderCaseResults('searchResults', results, 'No matching cases found.');
       }
 
       function loadCase(caseId, element) {
@@ -676,6 +709,20 @@
           })
           .withFailureHandler(handleError)
           .getSelectedCaseDetails();
+      }
+
+      function loadQuickList(filterName) {
+        const evaluator = document.getElementById('quickEvaluator').value;
+        google.script.run
+          .withSuccessHandler((results) => {
+            const emptyMessage = filterName === 'myCases'
+              ? 'No active cases found for that evaluator.'
+              : 'No cases matched that quick list.';
+            renderCaseResults('quickListResults', results, emptyMessage);
+            setStatus(`Loaded ${results.length} case(s).`, 'success');
+          })
+          .withFailureHandler(handleError)
+          .getQuickCaseList(filterName, evaluator);
       }
 
       function fillEditor(detail) {
@@ -840,7 +887,72 @@
           div.className = 'result-item';
           const label = item.DocumentLabel || item.label || 'Document';
           const path = item.DocumentPath || item.path || '';
-          div.innerHTML = `<strong>${escapeHtml(label)}</strong><br><span class="muted">${escapeHtml(path)}</span>`;
+          const documentId = item.DocumentID || '';
+          div.innerHTML = `
+            <div class="result-row">
+              <div class="result-main">
+                <strong>${escapeHtml(label)}</strong><br>
+                <span class="muted">${escapeHtml(path)}</span>
+              </div>
+              ${documentId ? `
+                <div class="result-actions">
+                  <button class="secondary" type="button" data-action="unlink">Unlink</button>
+                  <button class="danger" type="button" data-action="delete">Delete</button>
+                </div>
+              ` : ''}
+            </div>
+          `;
+          if (documentId) {
+            div.querySelector('[data-action="unlink"]').onclick = () => removeDocument(documentId, false, label);
+            div.querySelector('[data-action="delete"]').onclick = () => removeDocument(documentId, true, label);
+          }
+          wrap.appendChild(div);
+        });
+      }
+
+      function removeDocument(documentId, deleteFromDrive, label) {
+        if (!state.selectedCaseId) {
+          setStatus('Load the case again before changing uploads.', 'error');
+          return;
+        }
+
+        const confirmed = window.confirm(
+          deleteFromDrive
+            ? `Delete "${label}" from both this case and Google Drive?`
+            : `Unlink "${label}" from this case?`
+        );
+
+        if (!confirmed) {
+          return;
+        }
+
+        google.script.run
+          .withSuccessHandler((result) => {
+            document.getElementById('documentLinks').value = result.documentsText || '';
+            renderDocumentList(result.documents || []);
+            setStatus(deleteFromDrive ? 'Document deleted.' : 'Document unlinked.', 'success');
+          })
+          .withFailureHandler(handleError)
+          .removeCaseDocument(state.selectedCaseId, documentId, deleteFromDrive);
+      }
+
+      function renderCaseResults(targetId, results, emptyMessage) {
+        const wrap = document.getElementById(targetId);
+        wrap.innerHTML = '';
+
+        if (!results.length) {
+          wrap.innerHTML = `<div class="result-item">${escapeHtml(emptyMessage)}</div>`;
+          return;
+        }
+
+        results.forEach((item) => {
+          const div = document.createElement('div');
+          div.className = 'result-item';
+          div.innerHTML = `
+            <div><strong>${escapeHtml(item.caseId)}</strong> | ${escapeHtml(item.studentName || '')}</div>
+            <div class="muted">${escapeHtml(item.status || '')}${item.primaryDeadline ? ` | Due ${escapeHtml(item.primaryDeadline)}` : ''}</div>
+          `;
+          div.onclick = () => loadCase(item.caseId, div);
           wrap.appendChild(div);
         });
       }
@@ -882,6 +994,7 @@
           settings: 'openSettingsSheet',
           audit: 'openAuditSheet',
           archive: 'openArchiveSheet',
+          tests: 'openDueDateTestsSheet',
           summaryDistrictCaseType: 'openDistrictCaseTypeSummarySheet',
           summaryCaseType: 'openCaseTypeSummarySheet',
           summaryEvaluator: 'openEvaluatorSummarySheet',

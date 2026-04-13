@@ -10,6 +10,7 @@ const SHEETS = {
   cases: 'Cases',
   archive: 'ArchiveCases',
   documents: 'CaseDocuments',
+  tests: 'DueDateTests',
   districts: 'Districts',
   campuses: 'Campuses',
   evaluators: 'Evaluators',
@@ -80,6 +81,25 @@ const CASE_HEADERS = [
 
 const DOCUMENT_HEADERS = ['DocumentID', 'CaseID', 'DocumentLabel', 'DocumentPath', 'AddedAt'];
 const ARCHIVE_HEADERS = CASE_HEADERS.concat(['ArchivedAt']);
+const TEST_HEADERS = [
+  'ScenarioName',
+  'CaseType',
+  'District',
+  'ReferralReceivedDate',
+  'ActualConsentDate',
+  'ActualFIIEDate',
+  'ReevalDueDate',
+  'ExpectedResponseDueDate',
+  'ExpectedProjectedConsentDate',
+  'ExpectedProjectedFIIEDueDate',
+  'ExpectedProjectedARDDueDate',
+  'ActualResponseDueDate',
+  'ActualProjectedConsentDate',
+  'ActualProjectedFIIEDueDate',
+  'ActualProjectedARDDueDate',
+  'Result',
+  'Notes',
+];
 const DISTRICT_HEADERS = ['District', 'ResponseSchoolDays', 'FIIESchoolDays', 'ARDCalendarDays', 'Active'];
 const CAMPUS_HEADERS = ['Campus', 'District', 'Active'];
 const EVALUATOR_HEADERS = ['LeadEvaluator', 'Email', 'Active'];
@@ -125,6 +145,7 @@ function onOpen() {
     .addItem('Open Campuses (Admin)', 'openCampusesSheet')
     .addItem('Open Evaluators (Admin)', 'openEvaluatorsSheet')
     .addItem('Open Calendars (Admin)', 'openCalendarsSheet')
+    .addItem('Open Due Date Tests (Admin)', 'openDueDateTestsSheet')
     .addItem('Open Settings (Admin)', 'openSettingsSheet')
     .addItem('Open Audit Log (Admin)', 'openAuditSheet')
     .addItem('Open Archive (Admin)', 'openArchiveSheet')
@@ -133,6 +154,7 @@ function onOpen() {
     .addItem('Open Evaluator Summary', 'openEvaluatorSummarySheet')
     .addItem('Archive Completed Cases (Admin)', 'archiveCompletedCases')
     .addItem('Restore Selected Archived Case (Admin)', 'restoreSelectedArchivedCase')
+    .addItem('Refresh Due Date Tests', 'refreshDueDateTests')
     .addItem('Sync Calendar Grid', 'syncDistrictCalendarGrid')
     .addItem('Reapply Admin Sheet Protection', 'reapplyAdminSheetProtection')
     .addToUi();
@@ -207,6 +229,62 @@ function previewTimeline(input) {
 
 function getLateDateWarnings(payload) {
   return getLateDateWarnings_(payload, buildProjectedDates_(payload));
+}
+
+function getQuickCaseList(filterName, evaluatorName) {
+  ensureWorkbookReady_();
+
+  const activeCases = getTableRows_(SHEETS.cases, CASE_HEADERS)
+    .filter((row) => row.Status !== STATUSES.completed);
+  const today = normalizeDateForStorage_(new Date());
+  const normalizedEvaluator = normalizeComparisonText_(evaluatorName);
+  let filtered = activeCases;
+
+  if (filterName === 'overdue') {
+    filtered = activeCases.filter((row) => {
+      const deadline = parseDate_(row.PrimaryDeadline);
+      return deadline && deadline.getTime() < today.getTime();
+    });
+  } else if (filterName === 'dueThisWeek') {
+    filtered = activeCases.filter((row) => {
+      const deadline = parseDate_(row.PrimaryDeadline);
+      if (!deadline) {
+        return false;
+      }
+      const diffDays = Math.floor((deadline - today) / 86400000);
+      return diffDays >= 0 && diffDays <= 7;
+    });
+  } else if (filterName === 'myCases') {
+    if (!normalizedEvaluator) {
+      throw new Error('Choose a lead evaluator before loading evaluator cases.');
+    }
+    filtered = activeCases.filter((row) => normalizeComparisonText_(row.LeadEvaluator) === normalizedEvaluator);
+  }
+
+  filtered.sort((left, right) => {
+    const leftDeadline = parseDate_(left.PrimaryDeadline);
+    const rightDeadline = parseDate_(right.PrimaryDeadline);
+    if (!leftDeadline && !rightDeadline) {
+      return String(left.StudentName || '').localeCompare(String(right.StudentName || ''));
+    }
+    if (!leftDeadline) {
+      return 1;
+    }
+    if (!rightDeadline) {
+      return -1;
+    }
+    return leftDeadline.getTime() - rightDeadline.getTime();
+  });
+
+  return filtered.slice(0, 100).map((row) => ({
+    caseId: row.CaseID,
+    caseType: row.CaseType,
+    studentName: row.StudentName,
+    studentId: row.StudentID,
+    leadEvaluator: row.LeadEvaluator,
+    status: row.Status,
+    primaryDeadline: formatDate_(row.PrimaryDeadline),
+  }));
 }
 
 function getSelectedCaseDetails() {
@@ -441,6 +519,10 @@ function openCalendarsSheet(adminCode) {
   openAdminSheet_(SHEETS.calendars, adminCode);
 }
 
+function openDueDateTestsSheet(adminCode) {
+  openAdminSheet_(SHEETS.tests, adminCode);
+}
+
 function openSettingsSheet(adminCode) {
   openAdminSheet_(SHEETS.settings, adminCode);
 }
@@ -529,6 +611,13 @@ function restoreSelectedArchivedCase(adminCode) {
   const restoredCaseId = restoreArchivedCaseById_(selection.caseId);
   SpreadsheetApp.getUi().alert(`${restoredCaseId} was restored to the active Cases sheet.`);
   return restoredCaseId;
+}
+
+function refreshDueDateTests() {
+  ensureWorkbookScaffold_();
+  const results = refreshDueDateTests_();
+  SpreadsheetApp.getUi().alert(`Due date tests refreshed. ${results.passCount} passed, ${results.failCount} failed, ${results.checkCount} need expected dates.`);
+  return results;
 }
 
 function showAllSheets(adminCode) {
@@ -899,6 +988,7 @@ function ensureWorkbookScaffold_(options) {
   ensureSheet_(SHEETS.cases, CASE_HEADERS);
   ensureSheet_(SHEETS.archive, ARCHIVE_HEADERS);
   ensureSheet_(SHEETS.documents, DOCUMENT_HEADERS);
+  ensureSheet_(SHEETS.tests, TEST_HEADERS);
   ensureSheet_(SHEETS.districts, DISTRICT_HEADERS);
   ensureSheet_(SHEETS.campuses, CAMPUS_HEADERS);
   ensureSheet_(SHEETS.evaluators, EVALUATOR_HEADERS);
@@ -971,7 +1061,37 @@ function getPreservedSheetRows_(sheet, existingHeaders, targetHeaders) {
 }
 
 function applySheetColumnFormats_(sheetName, sheet) {
-  if ((sheetName !== SHEETS.cases && sheetName !== SHEETS.archive) || sheet.getMaxRows() < 2) {
+  if (
+    sheetName !== SHEETS.cases &&
+    sheetName !== SHEETS.archive &&
+    sheetName !== SHEETS.tests
+  ) {
+    return;
+  }
+
+  if (sheet.getMaxRows() < 2) {
+    return;
+  }
+
+  if (sheetName === SHEETS.tests) {
+    const headerMap = getHeaderMap_(TEST_HEADERS);
+    const dateColumns = [
+      'ReferralReceivedDate',
+      'ActualConsentDate',
+      'ActualFIIEDate',
+      'ReevalDueDate',
+      'ExpectedResponseDueDate',
+      'ExpectedProjectedConsentDate',
+      'ExpectedProjectedFIIEDueDate',
+      'ExpectedProjectedARDDueDate',
+      'ActualResponseDueDate',
+      'ActualProjectedConsentDate',
+      'ActualProjectedFIIEDueDate',
+      'ActualProjectedARDDueDate',
+    ];
+    dateColumns.forEach((header) => {
+      sheet.getRange(2, headerMap[header] + 1, Math.max(sheet.getMaxRows() - 1, 1), 1).setNumberFormat('mm/dd/yyyy');
+    });
     return;
   }
 
@@ -1138,6 +1258,7 @@ function buildSchoolYearDates_() {
 
 function seedReferenceData_() {
   seedSettings_();
+  seedDueDateTests_();
 
   maybeAppendSeedRow_(SHEETS.districts, DISTRICT_HEADERS, {
     District: 'Sample ISD',
@@ -1158,6 +1279,49 @@ function seedReferenceData_() {
     Email: 'sample@example.org',
     Active: 'Yes',
   });
+}
+
+function seedDueDateTests_() {
+  const sheet = SpreadsheetApp.getActive().getSheetByName(SHEETS.tests);
+  if (sheet.getLastRow() > 1) {
+    return;
+  }
+
+  const activeDistricts = getActiveColumnValues_(SHEETS.districts, 'District');
+  const districtName = activeDistricts[0] || 'Sample ISD';
+  const seedRows = [
+    {
+      ScenarioName: 'Initial referral baseline',
+      CaseType: CASE_TYPES.initial,
+      District: districtName,
+      ReferralReceivedDate: createLocalDate_(2026, 1, 12),
+      ActualConsentDate: '',
+      ActualFIIEDate: '',
+      ReevalDueDate: '',
+      ExpectedResponseDueDate: '',
+      ExpectedProjectedConsentDate: '',
+      ExpectedProjectedFIIEDueDate: '',
+      ExpectedProjectedARDDueDate: '',
+      Notes: 'Fill expected dates after you verify your district calendar.',
+    },
+    {
+      ScenarioName: 'Re-evaluation baseline',
+      CaseType: CASE_TYPES.reevaluation,
+      District: districtName,
+      ReferralReceivedDate: '',
+      ActualConsentDate: '',
+      ActualFIIEDate: '',
+      ReevalDueDate: createLocalDate_(2026, 10, 15),
+      ExpectedResponseDueDate: '',
+      ExpectedProjectedConsentDate: '',
+      ExpectedProjectedFIIEDueDate: '',
+      ExpectedProjectedARDDueDate: '',
+      Notes: 'Use this row to verify ARD projection from a re-evaluation due date.',
+    },
+  ];
+
+  const values = seedRows.map((row) => TEST_HEADERS.map((header) => (row[header] === undefined ? '' : row[header])));
+  sheet.getRange(2, 1, values.length, TEST_HEADERS.length).setValues(values);
 }
 
 function seedSettings_() {
@@ -1213,6 +1377,98 @@ function rewriteSheetRows_(sheetName, headers, rows) {
   }
 
   applySheetColumnFormats_(sheetName, sheet);
+}
+
+function refreshDueDateTests_() {
+  const sheet = SpreadsheetApp.getActive().getSheetByName(SHEETS.tests);
+  const rows = getTableRows_(SHEETS.tests, TEST_HEADERS);
+  const actualHeaders = [
+    'ActualResponseDueDate',
+    'ActualProjectedConsentDate',
+    'ActualProjectedFIIEDueDate',
+    'ActualProjectedARDDueDate',
+  ];
+  const headerMap = getHeaderMap_(TEST_HEADERS);
+  const actualOutput = [];
+  const resultValues = [];
+  const resultBackgrounds = [];
+  let passCount = 0;
+  let failCount = 0;
+  let checkCount = 0;
+
+  rows.forEach((row, index) => {
+    const timeline = buildProjectedDates_({
+      caseType: row.CaseType,
+      district: row.District,
+      referralReceivedDate: row.ReferralReceivedDate,
+      actualConsentDate: row.ActualConsentDate,
+      actualFIIEDate: row.ActualFIIEDate,
+      reevalDueDate: row.ReevalDueDate,
+    });
+
+    const actualValues = [
+      timeline.responseDueDate || '',
+      timeline.projectedConsentDate || '',
+      timeline.projectedFiiEDueDate || '',
+      timeline.projectedArdDueDate || '',
+    ];
+
+    actualOutput.push(actualValues);
+
+    const comparisons = [
+      ['ExpectedResponseDueDate', timeline.responseDueDate],
+      ['ExpectedProjectedConsentDate', timeline.projectedConsentDate],
+      ['ExpectedProjectedFIIEDueDate', timeline.projectedFiiEDueDate],
+      ['ExpectedProjectedARDDueDate', timeline.projectedArdDueDate],
+    ];
+
+    let hasExpected = false;
+    let mismatch = false;
+    comparisons.forEach(([expectedHeader, actualValue]) => {
+      const expectedValue = parseDate_(row[expectedHeader]);
+      if (!expectedValue) {
+        return;
+      }
+      hasExpected = true;
+      const actualDate = parseDate_(actualValue);
+      if (!actualDate || !sameDay_(expectedValue, actualDate)) {
+        mismatch = true;
+      }
+    });
+
+    let result = 'CHECK';
+    let background = '#fff2cc';
+
+    if (hasExpected && !mismatch) {
+      result = 'PASS';
+      background = '#d9ead3';
+      passCount += 1;
+    } else if (hasExpected && mismatch) {
+      result = 'FAIL';
+      background = '#f4cccc';
+      failCount += 1;
+    } else {
+      checkCount += 1;
+    }
+
+    resultValues.push([result]);
+    resultBackgrounds.push([background]);
+  });
+
+  if (rows.length) {
+    sheet.getRange(2, headerMap[actualHeaders[0]] + 1, rows.length, actualHeaders.length).setValues(actualOutput);
+    sheet.getRange(2, headerMap.Result + 1, rows.length, 1)
+      .setValues(resultValues)
+      .setBackgrounds(resultBackgrounds)
+      .setHorizontalAlignment('center')
+      .setFontWeight('bold');
+  }
+
+  return {
+    passCount,
+    failCount,
+    checkCount,
+  };
 }
 
 function getTableRows_(sheetName, headers) {
@@ -1463,6 +1719,75 @@ function restoreArchivedCaseById_(caseId) {
 
   refreshDashboard_(true);
   return caseId;
+}
+
+function removeCaseDocument(caseId, documentId, deleteFromDrive) {
+  ensureWorkbookReady_();
+
+  if (!String(caseId || '').trim() || !String(documentId || '').trim()) {
+    throw new Error('A case and document selection are required.');
+  }
+
+  const sheet = SpreadsheetApp.getActive().getSheetByName(SHEETS.documents);
+  const rows = getTableRows_(SHEETS.documents, DOCUMENT_HEADERS);
+  const target = rows.find((row) => row.CaseID === caseId && row.DocumentID === documentId);
+
+  if (!target) {
+    throw new Error('That document link no longer exists. Refresh the case and try again.');
+  }
+
+  if (deleteFromDrive) {
+    deleteDriveFileIfPossible_(target.DocumentPath);
+  }
+
+  const remaining = rows.filter((row) => !(row.CaseID === caseId && row.DocumentID === documentId));
+  rewriteSheetRows_(SHEETS.documents, DOCUMENT_HEADERS, remaining);
+
+  const previousDocumentsText = buildCaseDocumentsText_(rows.filter((row) => row.CaseID === caseId));
+  const nextDocumentsText = buildCaseDocumentsText_(remaining.filter((row) => row.CaseID === caseId));
+  logDocumentsUpdate_(caseId, previousDocumentsText, nextDocumentsText);
+  refreshDashboard_(false);
+
+  return toHtmlSafeObject_({
+    documents: normalizeDocumentsForUi_(remaining.filter((row) => row.CaseID === caseId)),
+    documentsText: nextDocumentsText,
+  });
+}
+
+function deleteDriveFileIfPossible_(documentPath) {
+  const fileId = extractDriveFileId_(documentPath);
+  if (!fileId) {
+    return false;
+  }
+
+  try {
+    DriveApp.getFileById(fileId).setTrashed(true);
+    return true;
+  } catch (error) {
+    throw new Error('The Google Drive file could not be deleted with the current permissions.');
+  }
+}
+
+function extractDriveFileId_(documentPath) {
+  const text = String(documentPath || '').trim();
+  if (!text) {
+    return '';
+  }
+
+  const patterns = [
+    /\/d\/([a-zA-Z0-9_-]{20,})/,
+    /[?&]id=([a-zA-Z0-9_-]{20,})/,
+    /^([a-zA-Z0-9_-]{20,})$/,
+  ];
+
+  for (let index = 0; index < patterns.length; index += 1) {
+    const match = text.match(patterns[index]);
+    if (match) {
+      return match[1];
+    }
+  }
+
+  return '';
 }
 
 function logCaseCreation_(row) {

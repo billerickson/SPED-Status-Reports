@@ -12,10 +12,14 @@
 - summary report sheet by district and case type
 - selected-row case opening from dashboards and the `Cases` sheet
 - duplicate detection based on `Student Name + DOB + Campus` in addition to `Student ID`
+- upload unlink and delete controls in the sidebar
+- due-date validation harness sheet
+- quick sidebar filters for overdue, due-this-week, and evaluator-specific active cases
 
 ## Recommended Next
-- add delete/unlink support for uploaded documents
-- add a validation/test harness sheet for due-date calculations
+- add richer dashboard filter presets and saved views
+- add bulk archive/restore safeguards with preview counts
+- add more explicit upload ownership tracking before permanent delete
 
 ## V2 Direction
 - Gmail draft generation after milestone updates
