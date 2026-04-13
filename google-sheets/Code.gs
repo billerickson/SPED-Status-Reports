@@ -6,6 +6,7 @@ const SAVED_VIEW_PREFIX = 'View - ';
 const DOCUMENT_PROPERTIES = {
   pendingCaseId: 'SPED_PENDING_CASE_ID',
 };
+let REQUEST_CACHE = {};
 
 const SHEETS = {
   cases: 'Cases',
@@ -165,7 +166,28 @@ function onOpen() {
     .addToUi();
 }
 
+function resetRequestCache_() {
+  REQUEST_CACHE = {
+    tableRows: {},
+    activeRows: {},
+    settingValues: {},
+    districtConfigs: {},
+    districtCalendars: {},
+    caseRecords: {},
+    archivedCaseRecords: {},
+    caseDocuments: {},
+    caseDocumentsMap: null,
+  };
+}
+
+function invalidateRequestCache_() {
+  resetRequestCache_();
+}
+
+resetRequestCache_();
+
 function installSpedStatusReports() {
+  resetRequestCache_();
   ensureWorkbookScaffold_({
     seedReferenceData: true,
     syncCalendar: true,
@@ -179,6 +201,7 @@ function installSpedStatusReports() {
 }
 
 function syncDistrictCalendarGrid() {
+  resetRequestCache_();
   ensureWorkbookScaffold_();
   syncDistrictCalendarSheet_();
   SpreadsheetApp.getUi().alert(
@@ -187,6 +210,7 @@ function syncDistrictCalendarGrid() {
 }
 
 function reapplyAdminSheetProtection() {
+  resetRequestCache_();
   applyAllSheetProtections_();
   SpreadsheetApp.getUi().alert(
     'Admin sheet protection was reapplied. Direct sheet edits are limited to the configured admin accounts.'
@@ -194,12 +218,14 @@ function reapplyAdminSheetProtection() {
 }
 
 function showSpedSidebar() {
+  resetRequestCache_();
   const html = HtmlService.createHtmlOutputFromFile('Sidebar')
     .setTitle('SPED Status Reports');
   SpreadsheetApp.getUi().showSidebar(html);
 }
 
 function getAppBootstrap() {
+  resetRequestCache_();
   ensureWorkbookReady_();
 
   return {
@@ -229,14 +255,17 @@ function ensureWorkbookReady_() {
 }
 
 function previewTimeline(input) {
+  resetRequestCache_();
   return normalizeTimelineForUi_(buildProjectedDates_(input));
 }
 
 function getLateDateWarnings(payload) {
+  resetRequestCache_();
   return getLateDateWarnings_(payload, buildProjectedDates_(payload));
 }
 
 function getQuickCaseList(filterName, evaluatorName) {
+  resetRequestCache_();
   ensureWorkbookReady_();
 
   const activeCases = getTableRows_(SHEETS.cases, CASE_HEADERS)
@@ -293,6 +322,7 @@ function getQuickCaseList(filterName, evaluatorName) {
 }
 
 function getSelectedCaseDetails() {
+  resetRequestCache_();
   const selection = getSelectedCaseReference_();
   if (!selection || selection.location !== 'active') {
     throw new Error('Select a case row from Cases or a dashboard first.');
@@ -301,6 +331,7 @@ function getSelectedCaseDetails() {
 }
 
 function searchCases(studentId, caseType) {
+  resetRequestCache_();
   const normalizedStudentId = normalizeStudentId_(studentId);
   if (!normalizedStudentId) {
     return [];
@@ -331,6 +362,7 @@ function searchCases(studentId, caseType) {
 }
 
 function getCaseDetails(caseId) {
+  resetRequestCache_();
   if (!String(caseId || '').trim()) {
     throw new Error('A valid Case ID is required to load an existing case.');
   }
@@ -358,6 +390,7 @@ function getCaseDetails(caseId) {
 }
 
 function saveNewCase(payload) {
+  resetRequestCache_();
   const lock = LockService.getDocumentLock();
   lock.waitLock(30000);
 
@@ -392,6 +425,7 @@ function saveNewCase(payload) {
 }
 
 function updateExistingCase(payload) {
+  resetRequestCache_();
   const lock = LockService.getDocumentLock();
   lock.waitLock(30000);
 
@@ -492,6 +526,7 @@ function validateAdminCode(adminCode) {
 }
 
 function openDashboard() {
+  resetRequestCache_();
   const sheet = SpreadsheetApp.getActive().getSheetByName(SHEETS.dashboard);
   if (sheet) {
     SpreadsheetApp.getActive().setActiveSheet(sheet);
@@ -499,6 +534,7 @@ function openDashboard() {
 }
 
 function openSelectedCaseFromActiveRow() {
+  resetRequestCache_();
   ensureWorkbookReady_();
   const selection = getSelectedCaseReference_();
   if (!selection || selection.location !== 'active') {
@@ -509,42 +545,52 @@ function openSelectedCaseFromActiveRow() {
 }
 
 function openDistrictsSheet(adminCode) {
+  resetRequestCache_();
   openAdminSheet_(SHEETS.districts, adminCode);
 }
 
 function openCampusesSheet(adminCode) {
+  resetRequestCache_();
   openAdminSheet_(SHEETS.campuses, adminCode);
 }
 
 function openEvaluatorsSheet(adminCode) {
+  resetRequestCache_();
   openAdminSheet_(SHEETS.evaluators, adminCode);
 }
 
 function openCalendarsSheet(adminCode) {
+  resetRequestCache_();
   openAdminSheet_(SHEETS.calendars, adminCode);
 }
 
 function openDueDateTestsSheet(adminCode) {
+  resetRequestCache_();
   openAdminSheet_(SHEETS.tests, adminCode);
 }
 
 function openDashboardViewsSheet(adminCode) {
+  resetRequestCache_();
   openAdminSheet_(SHEETS.views, adminCode);
 }
 
 function openSettingsSheet(adminCode) {
+  resetRequestCache_();
   openAdminSheet_(SHEETS.settings, adminCode);
 }
 
 function openAuditSheet(adminCode) {
+  resetRequestCache_();
   openAdminSheet_(SHEETS.audit, adminCode);
 }
 
 function openArchiveSheet(adminCode) {
+  resetRequestCache_();
   openAdminSheet_(SHEETS.archive, adminCode);
 }
 
 function openCaseTypeSummarySheet() {
+  resetRequestCache_();
   const sheet = SpreadsheetApp.getActive().getSheetByName(SHEETS.summaryCaseType);
   if (sheet) {
     SpreadsheetApp.getActive().setActiveSheet(sheet);
@@ -552,6 +598,7 @@ function openCaseTypeSummarySheet() {
 }
 
 function openDistrictCaseTypeSummarySheet() {
+  resetRequestCache_();
   const sheet = SpreadsheetApp.getActive().getSheetByName(SHEETS.summaryDistrictCaseType);
   if (sheet) {
     SpreadsheetApp.getActive().setActiveSheet(sheet);
@@ -559,6 +606,7 @@ function openDistrictCaseTypeSummarySheet() {
 }
 
 function openEvaluatorSummarySheet() {
+  resetRequestCache_();
   const sheet = SpreadsheetApp.getActive().getSheetByName(SHEETS.summaryEvaluator);
   if (sheet) {
     SpreadsheetApp.getActive().setActiveSheet(sheet);
@@ -566,6 +614,7 @@ function openEvaluatorSummarySheet() {
 }
 
 function archiveCompletedCases(adminCode) {
+  resetRequestCache_();
   let resolvedCode = adminCode;
   if (!resolvedCode) {
     resolvedCode = SpreadsheetApp.getUi().prompt('Enter the admin access code to archive completed cases.').getResponseText();
@@ -577,7 +626,8 @@ function archiveCompletedCases(adminCode) {
 
   ensureWorkbookScaffold_();
 
-  const completedCases = getTableRows_(SHEETS.cases, CASE_HEADERS).filter((row) => row.Status === STATUSES.completed);
+  const caseRows = getTableRows_(SHEETS.cases, CASE_HEADERS);
+  const completedCases = caseRows.filter((row) => row.Status === STATUSES.completed);
   if (!completedCases.length) {
     SpreadsheetApp.getUi().alert('No completed cases are ready to archive.');
     return 0;
@@ -600,7 +650,7 @@ function archiveCompletedCases(adminCode) {
 
   archiveSheet.getRange(archiveSheet.getLastRow() + 1, 1, archiveValues.length, ARCHIVE_HEADERS.length).setValues(archiveValues);
 
-  const remainingCases = getTableRows_(SHEETS.cases, CASE_HEADERS).filter((row) => row.Status !== STATUSES.completed);
+  const remainingCases = caseRows.filter((row) => row.Status !== STATUSES.completed);
   rewriteSheetRows_(SHEETS.cases, CASE_HEADERS, remainingCases);
 
   appendAuditRows_(completedCases.map((row) => buildAuditRow_(row.CaseID, 'Archive', 'Status', row.Status, 'Archived')));
@@ -610,6 +660,7 @@ function archiveCompletedCases(adminCode) {
 }
 
 function restoreSelectedArchivedCase(adminCode) {
+  resetRequestCache_();
   let resolvedCode = adminCode;
   if (!resolvedCode) {
     resolvedCode = SpreadsheetApp.getUi().prompt('Enter the admin access code to restore an archived case.').getResponseText();
@@ -641,12 +692,14 @@ function restoreSelectedArchivedCase(adminCode) {
 }
 
 function refreshSavedViews() {
+  resetRequestCache_();
   ensureWorkbookScaffold_();
   refreshSavedViews_(true);
   SpreadsheetApp.getUi().alert('Saved dashboard views were refreshed.');
 }
 
 function refreshDueDateTests() {
+  resetRequestCache_();
   ensureWorkbookScaffold_();
   const results = refreshDueDateTests_();
   SpreadsheetApp.getUi().alert(`Due date tests refreshed. ${results.passCount} passed, ${results.failCount} failed, ${results.checkCount} need expected dates.`);
@@ -654,6 +707,7 @@ function refreshDueDateTests() {
 }
 
 function showAllSheets(adminCode) {
+  resetRequestCache_();
   if (!validateAdminCode(adminCode)) {
     throw new Error('Admin access denied.');
   }
@@ -662,6 +716,7 @@ function showAllSheets(adminCode) {
 }
 
 function applyAdminSheetProtection(adminCode) {
+  resetRequestCache_();
   if (!validateAdminCode(adminCode)) {
     throw new Error('Admin access denied.');
   }
@@ -670,6 +725,7 @@ function applyAdminSheetProtection(adminCode) {
 }
 
 function refreshDashboard() {
+  resetRequestCache_();
   ensureWorkbookScaffold_();
   refreshDashboard_(true);
 }
@@ -678,6 +734,15 @@ function refreshDashboard_(applyLayout) {
   const ss = SpreadsheetApp.getActive();
   const cases = getTableRows_(SHEETS.cases, CASE_HEADERS);
   const documentsByCase = getCaseDocumentsMap_();
+  const hasAdminEditors = getAdminEditorEmails_().length > 0;
+  const casesByDistrict = cases.reduce((acc, row) => {
+    const districtName = String(row.District || '').trim();
+    if (!acc[districtName]) {
+      acc[districtName] = [];
+    }
+    acc[districtName].push(row);
+    return acc;
+  }, {});
 
   renderDashboardSheet_(
     ensureSheet_(SHEETS.dashboard, ['SPED Status Reports Dashboard']),
@@ -696,11 +761,11 @@ function refreshDashboard_(applyLayout) {
       districtSheet,
       `${districtName} SPED Status Reports`,
       `District dashboard for ${districtName}.`,
-      cases.filter((row) => String(row.District).trim() === String(districtName).trim()),
+      casesByDistrict[String(districtName).trim()] || [],
       documentsByCase,
       applyLayout
     );
-    if ((applyLayout || !existingSheet) && getAdminEditorEmails_().length) {
+    if ((applyLayout || !existingSheet) && hasAdminEditors) {
       applyProtection_(districtSheet);
     }
   });
@@ -795,6 +860,7 @@ function renderDashboardSummary_(sheet, summary) {
 
 function getDashboardSummary_(cases) {
   const today = normalizeDateForStorage_(new Date());
+  const activeCases = cases.filter((row) => row.Status !== STATUSES.completed);
   let overdue = 0;
   let dueThisWeek = 0;
   let dueThisMonth = 0;
@@ -824,7 +890,7 @@ function getDashboardSummary_(cases) {
   });
 
   return {
-    totalActive: cases.length,
+    totalActive: activeCases.length,
     overdue,
     dueThisWeek,
     dueThisMonth,
@@ -1223,11 +1289,16 @@ function getAdminEditorEmails_() {
 }
 
 function getSettingValue_(settingKey, fallbackValue) {
+  if (REQUEST_CACHE.settingValues[settingKey] !== undefined) {
+    return REQUEST_CACHE.settingValues[settingKey];
+  }
   const rows = getTableRows_(SHEETS.settings, SETTINGS_HEADERS);
   const match = rows.find((row) => String(row.SettingKey).trim() === String(settingKey).trim());
   if (!match || match.SettingValue === '') {
+    REQUEST_CACHE.settingValues[settingKey] = fallbackValue;
     return fallbackValue;
   }
+  REQUEST_CACHE.settingValues[settingKey] = match.SettingValue;
   return match.SettingValue;
 }
 
@@ -1269,6 +1340,7 @@ function syncDistrictCalendarSheet_() {
   }
 
   sheet.autoResizeColumns(1, headers.length);
+  invalidateRequestCache_();
 }
 
 function getCalendarExistingState_(sheet) {
@@ -1469,12 +1541,14 @@ function appendRow_(sheetName, objectRow, headers) {
   const sheet = SpreadsheetApp.getActive().getSheetByName(sheetName);
   const values = headers.map((header) => (objectRow[header] === undefined ? '' : objectRow[header]));
   sheet.appendRow(values);
+  invalidateRequestCache_();
 }
 
 function writeCaseRowByIndex_(rowIndex, objectRow) {
   const sheet = SpreadsheetApp.getActive().getSheetByName(SHEETS.cases);
   const rowValues = CASE_HEADERS.map((header) => (objectRow[header] === undefined ? '' : objectRow[header]));
   sheet.getRange(rowIndex, 1, 1, CASE_HEADERS.length).setValues([rowValues]);
+  invalidateRequestCache_();
 }
 
 function rewriteSheetRows_(sheetName, headers, rows) {
@@ -1489,6 +1563,7 @@ function rewriteSheetRows_(sheetName, headers, rows) {
   }
 
   applySheetColumnFormats_(sheetName, sheet);
+  invalidateRequestCache_();
 }
 
 function refreshDueDateTests_() {
@@ -1589,6 +1664,7 @@ function refreshSavedViews_(applyLayout, cases, documentsByCase) {
   const allDocuments = documentsByCase || getCaseDocumentsMap_();
   const savedViews = getActiveSavedViews_();
   const expectedSheetNames = savedViews.map((view) => getSavedViewSheetName_(view.ViewName));
+  const hasAdminEditors = getAdminEditorEmails_().length > 0;
 
   savedViews.forEach((view) => {
     const sheetName = getSavedViewSheetName_(view.ViewName);
@@ -1603,7 +1679,7 @@ function refreshSavedViews_(applyLayout, cases, documentsByCase) {
       allDocuments,
       applyLayout
     );
-    if ((applyLayout || !existingSheet) && getAdminEditorEmails_().length) {
+    if ((applyLayout || !existingSheet) && hasAdminEditors) {
       applyProtection_(sheet);
     }
   });
@@ -1623,6 +1699,9 @@ function getActiveSavedViews_() {
 function filterCasesForSavedView_(cases, view) {
   const today = normalizeDateForStorage_(new Date());
   return cases.filter((row) => {
+    if (!String(view.Status || '').trim() && row.Status === STATUSES.completed) {
+      return false;
+    }
     if (String(view.District || '').trim() && normalizeComparisonText_(row.District) !== normalizeComparisonText_(view.District)) {
       return false;
     }
@@ -1682,19 +1761,32 @@ function buildSavedViewSubtitle_(view) {
 }
 
 function getTableRows_(sheetName, headers) {
+  const cacheKey = `${sheetName}::${headers.join('|')}`;
+  if (REQUEST_CACHE.tableRows[cacheKey]) {
+    return REQUEST_CACHE.tableRows[cacheKey];
+  }
+
   const sheet = SpreadsheetApp.getActive().getSheetByName(sheetName);
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) {
+    REQUEST_CACHE.tableRows[cacheKey] = [];
     return [];
   }
 
   const values = sheet.getRange(2, 1, lastRow - 1, headers.length).getValues();
-  return values.map((row) => toObject_(headers, row));
+  const rows = values.map((row) => toObject_(headers, row));
+  REQUEST_CACHE.tableRows[cacheKey] = rows;
+  return rows;
 }
 
 function getActiveRows_(sheetName) {
+  if (REQUEST_CACHE.activeRows[sheetName]) {
+    return REQUEST_CACHE.activeRows[sheetName];
+  }
   const headers = sheetName === SHEETS.campuses ? CAMPUS_HEADERS : sheetName === SHEETS.evaluators ? EVALUATOR_HEADERS : DISTRICT_HEADERS;
-  return getTableRows_(sheetName, headers).filter((row) => String(row.Active).toLowerCase() === 'yes');
+  const rows = getTableRows_(sheetName, headers).filter((row) => String(row.Active).toLowerCase() === 'yes');
+  REQUEST_CACHE.activeRows[sheetName] = rows;
+  return rows;
 }
 
 function getActiveColumnValues_(sheetName, columnName) {
@@ -1938,7 +2030,6 @@ function removeCaseDocument(caseId, documentId, deleteFromDrive) {
     throw new Error('A case and document selection are required.');
   }
 
-  const sheet = SpreadsheetApp.getActive().getSheetByName(SHEETS.documents);
   const rows = getTableRows_(SHEETS.documents, DOCUMENT_HEADERS);
   const target = rows.find((row) => row.CaseID === caseId && row.DocumentID === documentId);
 
@@ -2112,17 +2203,23 @@ function getDistrictConfig_(districtName) {
     return defaults;
   }
 
+  if (REQUEST_CACHE.districtConfigs[districtName]) {
+    return REQUEST_CACHE.districtConfigs[districtName];
+  }
+
   const rows = getTableRows_(SHEETS.districts, DISTRICT_HEADERS);
   const row = rows.find((item) => String(item.District).trim() === String(districtName).trim());
   if (!row) {
     return defaults;
   }
 
-  return {
+  const config = {
     ResponseSchoolDays: Number(row.ResponseSchoolDays) || defaults.ResponseSchoolDays,
     FIIESchoolDays: Number(row.FIIESchoolDays) || defaults.FIIESchoolDays,
     ARDCalendarDays: Number(row.ARDCalendarDays) || defaults.ARDCalendarDays,
   };
+  REQUEST_CACHE.districtConfigs[districtName] = config;
+  return config;
 }
 
 function addInstructionalDays_(startDate, daysToAdd, districtName, calendarLookup) {
@@ -2159,6 +2256,10 @@ function isInstructionalDay_(dateValue, districtName, calendarLookup) {
 }
 
 function getDistrictCalendarLookup_(districtName) {
+  if (REQUEST_CACHE.districtCalendars[districtName]) {
+    return REQUEST_CACHE.districtCalendars[districtName];
+  }
+
   const sheet = SpreadsheetApp.getActive().getSheetByName(SHEETS.calendars);
   const lastRow = sheet.getLastRow();
   const lastColumn = sheet.getLastColumn();
@@ -2183,6 +2284,7 @@ function getDistrictCalendarLookup_(districtName) {
     }
   });
 
+  REQUEST_CACHE.districtCalendars[districtName] = lookup;
   return lookup;
 }
 
@@ -2381,9 +2483,13 @@ function buildCaseIdentity_(source) {
 }
 
 function findCaseRecord_(caseId) {
+  if (REQUEST_CACHE.caseRecords[caseId] !== undefined) {
+    return REQUEST_CACHE.caseRecords[caseId];
+  }
   const sheet = SpreadsheetApp.getActive().getSheetByName(SHEETS.cases);
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) {
+    REQUEST_CACHE.caseRecords[caseId] = null;
     return null;
   }
 
@@ -2395,20 +2501,27 @@ function findCaseRecord_(caseId) {
       continue;
     }
     if (String(values[index][headerMap.CaseID]).trim() === String(caseId).trim()) {
-      return {
+      const record = {
         row: toObject_(CASE_HEADERS, values[index]),
         rowIndex: index + 2,
       };
+      REQUEST_CACHE.caseRecords[caseId] = record;
+      return record;
     }
   }
 
+  REQUEST_CACHE.caseRecords[caseId] = null;
   return null;
 }
 
 function findArchivedCaseRecord_(caseId) {
+  if (REQUEST_CACHE.archivedCaseRecords[caseId] !== undefined) {
+    return REQUEST_CACHE.archivedCaseRecords[caseId];
+  }
   const sheet = SpreadsheetApp.getActive().getSheetByName(SHEETS.archive);
   const lastRow = sheet.getLastRow();
   if (lastRow < 2) {
+    REQUEST_CACHE.archivedCaseRecords[caseId] = null;
     return null;
   }
 
@@ -2420,13 +2533,16 @@ function findArchivedCaseRecord_(caseId) {
       continue;
     }
     if (String(values[index][headerMap.CaseID]).trim() === String(caseId).trim()) {
-      return {
+      const record = {
         row: toObject_(ARCHIVE_HEADERS, values[index]),
         rowIndex: index + 2,
       };
+      REQUEST_CACHE.archivedCaseRecords[caseId] = record;
+      return record;
     }
   }
 
+  REQUEST_CACHE.archivedCaseRecords[caseId] = null;
   return null;
 }
 
@@ -2473,6 +2589,7 @@ function replaceCaseDocuments_(caseId, rawDocumentText) {
   if (finalRows.length) {
     sheet.getRange(2, 1, finalRows.length, DOCUMENT_HEADERS.length).setValues(finalRows);
   }
+  invalidateRequestCache_();
 }
 
 function uploadFilesToCase(caseId, files) {
@@ -2558,8 +2675,13 @@ function buildCaseDocumentsText_(documents) {
 }
 
 function getCaseDocuments_(caseId) {
+  if (REQUEST_CACHE.caseDocuments[caseId]) {
+    return REQUEST_CACHE.caseDocuments[caseId];
+  }
   const rows = getTableRows_(SHEETS.documents, DOCUMENT_HEADERS);
-  return rows.filter((row) => row.CaseID === caseId);
+  const documents = rows.filter((row) => row.CaseID === caseId);
+  REQUEST_CACHE.caseDocuments[caseId] = documents;
+  return documents;
 }
 
 function normalizeDocumentsForUi_(documents) {
@@ -2573,14 +2695,19 @@ function normalizeDocumentsForUi_(documents) {
 }
 
 function getCaseDocumentsMap_() {
+  if (REQUEST_CACHE.caseDocumentsMap) {
+    return REQUEST_CACHE.caseDocumentsMap;
+  }
   const rows = getTableRows_(SHEETS.documents, DOCUMENT_HEADERS);
-  return rows.reduce((acc, row) => {
+  const documentMap = rows.reduce((acc, row) => {
     if (!acc[row.CaseID]) {
       acc[row.CaseID] = [];
     }
     acc[row.CaseID].push(row);
     return acc;
   }, {});
+  REQUEST_CACHE.caseDocumentsMap = documentMap;
+  return documentMap;
 }
 
 function getCaseUploadFolder_(caseId) {
