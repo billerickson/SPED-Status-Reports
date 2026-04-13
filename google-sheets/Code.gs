@@ -527,6 +527,8 @@ function buildDashboardRecord_(row, documents) {
     status: row.Status,
     responseDueDate: row.ResponseDueDate,
     responseCompletedDate: row.ResponseSentDate,
+    consentDueDate: row.ProjectedConsentDate,
+    consentCompletedDate: row.ActualConsentDate,
     evaluationDueDate,
     evaluationCompletedDate: row.ActualFIIEDate,
     ardDueDate: row.ProjectedARDDueDate,
@@ -954,7 +956,7 @@ function validatePayload_(payload, requireCaseId) {
 
 function validateVarianceNotes_(payload, timeline) {
   const notes = String(payload.serviceNotes || '').trim();
-  const mismatches = [];
+  const lateDates = [];
   const responseSentDate = parseDate_(payload.responseSentDate);
   const actualConsentDate = parseDate_(payload.actualConsentDate);
   const actualFiiEDate = parseDate_(payload.actualFIIEDate);
@@ -964,21 +966,21 @@ function validateVarianceNotes_(payload, timeline) {
   const evaluationDueDate = parseDate_(getEvaluationDueDate_(payload, timeline));
   const ardDueDate = parseDate_(timeline.projectedArdDueDate);
 
-  if (responseSentDate && responseDueDate && !sameDay_(responseSentDate, responseDueDate)) {
-    mismatches.push('Response Sent Date');
+  if (isAfterDate_(responseSentDate, responseDueDate)) {
+    lateDates.push('Response Sent Date');
   }
-  if (actualConsentDate && consentDueDate && !sameDay_(actualConsentDate, consentDueDate)) {
-    mismatches.push('Consent Date');
+  if (isAfterDate_(actualConsentDate, consentDueDate)) {
+    lateDates.push('Consent Date');
   }
-  if (actualFiiEDate && evaluationDueDate && !sameDay_(actualFiiEDate, evaluationDueDate)) {
-    mismatches.push('Evaluation Date');
+  if (isAfterDate_(actualFiiEDate, evaluationDueDate)) {
+    lateDates.push('Evaluation Date');
   }
-  if (actualArdDate && ardDueDate && !sameDay_(actualArdDate, ardDueDate)) {
-    mismatches.push('ARD Date');
+  if (isAfterDate_(actualArdDate, ardDueDate)) {
+    lateDates.push('ARD Date');
   }
 
-  if (mismatches.length && !notes) {
-    throw new Error(`Notes are required when due dates do not match actual dates: ${mismatches.join(', ')}.`);
+  if (lateDates.length && !notes) {
+    throw new Error(`Notes are required when actual dates are later than due dates: ${lateDates.join(', ')}.`);
   }
 }
 
@@ -1538,6 +1540,15 @@ function sameDay_(left, right) {
   );
 }
 
+function isAfterDate_(left, right) {
+  const leftDate = parseDate_(left);
+  const rightDate = parseDate_(right);
+  if (!leftDate || !rightDate) {
+    return false;
+  }
+  return leftDate.getTime() > rightDate.getTime();
+}
+
 function isWeekend_(dateValue) {
   const day = dateValue.getDay();
   return day === 0 || day === 6;
@@ -1588,8 +1599,11 @@ function applyDashboardFormatting_(sheet, startRow, records) {
   const backgrounds = records.map(() => new Array(headers.length).fill('#ffffff'));
   const statusColumnIndex = headers.indexOf('Status');
   const responseDueColumnIndex = headers.indexOf('Response Due Date');
+  const consentDateColumnIndex = headers.indexOf('Consent Date');
   const evaluationDueColumnIndex = headers.indexOf('Evaluation Due Date');
+  const evaluationDateColumnIndex = headers.indexOf('Evaluation Date');
   const ardDueColumnIndex = headers.indexOf('ARD Due Date');
+  const ardDateColumnIndex = headers.indexOf('ARD Date');
   const statusColors = {
     [STATUSES.referralReceived]: '#d9eaf7',
     [STATUSES.responseSent]: '#f4cccc',
@@ -1602,31 +1616,40 @@ function applyDashboardFormatting_(sheet, startRow, records) {
 
   records.forEach((record, rowIndex) => {
     backgrounds[rowIndex][statusColumnIndex] = statusColors[record.status] || '#ffffff';
-    applyDueDateColor_(backgrounds[rowIndex], responseDueColumnIndex, record.responseDueDate, record.responseCompletedDate);
-    applyDueDateColor_(backgrounds[rowIndex], evaluationDueColumnIndex, record.evaluationDueDate, record.evaluationCompletedDate);
-    applyDueDateColor_(backgrounds[rowIndex], ardDueColumnIndex, record.ardDueDate, record.ardCompletedDate);
+    applyDueDateColor_(backgrounds[rowIndex], responseDueColumnIndex, record.responseDueDate, record.responseCompletedDate, -1);
+    applyDueDateColor_(backgrounds[rowIndex], consentDateColumnIndex, record.consentDueDate, record.consentCompletedDate, consentDateColumnIndex);
+    applyDueDateColor_(backgrounds[rowIndex], evaluationDueColumnIndex, record.evaluationDueDate, record.evaluationCompletedDate, evaluationDateColumnIndex);
+    applyDueDateColor_(backgrounds[rowIndex], ardDueColumnIndex, record.ardDueDate, record.ardCompletedDate, ardDateColumnIndex);
   });
 
   range.setBackgrounds(backgrounds);
 }
 
-function applyDueDateColor_(rowBackgrounds, columnIndex, dueDate, completedDate) {
-  if (completedDate || !dueDate) {
+function applyDueDateColor_(rowBackgrounds, dueColumnIndex, dueDate, completedDate, completedColumnIndex) {
+  if (!dueDate) {
     return;
   }
 
-  const today = normalizeDateForStorage_(new Date());
   const due = parseDate_(dueDate);
   if (!due) {
     return;
   }
 
+  if (completedDate) {
+    if (isAfterDate_(completedDate, dueDate)) {
+      const targetColumnIndex = completedColumnIndex >= 0 ? completedColumnIndex : dueColumnIndex;
+      rowBackgrounds[targetColumnIndex] = '#ff9999';
+    }
+    return;
+  }
+
+  const today = normalizeDateForStorage_(new Date());
   const diffDays = Math.floor((due - today) / 86400000);
   if (diffDays < 0) {
-    rowBackgrounds[columnIndex] = '#ff9999';
+    rowBackgrounds[dueColumnIndex] = '#ff9999';
     return;
   }
   if (diffDays <= 30) {
-    rowBackgrounds[columnIndex] = '#f4cccc';
+    rowBackgrounds[dueColumnIndex] = '#f4cccc';
   }
 }
