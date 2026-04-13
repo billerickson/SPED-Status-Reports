@@ -16,6 +16,7 @@ const SHEETS = {
   dashboard: 'Dashboard',
   summaryCaseType: 'SummaryByCaseType',
   summaryEvaluator: 'SummaryByEvaluator',
+  summaryDistrictCaseType: 'SummaryByDistrictCaseType',
 };
 
 const CASE_TYPES = {
@@ -123,6 +124,7 @@ function onOpen() {
     .addItem('Open Settings (Admin)', 'openSettingsSheet')
     .addItem('Open Audit Log (Admin)', 'openAuditSheet')
     .addItem('Open Archive (Admin)', 'openArchiveSheet')
+    .addItem('Open District Case Type Summary', 'openDistrictCaseTypeSummarySheet')
     .addItem('Open Case Type Summary', 'openCaseTypeSummarySheet')
     .addItem('Open Evaluator Summary', 'openEvaluatorSummarySheet')
     .addItem('Archive Completed Cases (Admin)', 'archiveCompletedCases')
@@ -434,6 +436,13 @@ function openCaseTypeSummarySheet() {
   }
 }
 
+function openDistrictCaseTypeSummarySheet() {
+  const sheet = SpreadsheetApp.getActive().getSheetByName(SHEETS.summaryDistrictCaseType);
+  if (sheet) {
+    SpreadsheetApp.getActive().setActiveSheet(sheet);
+  }
+}
+
 function openEvaluatorSummarySheet() {
   const sheet = SpreadsheetApp.getActive().getSheetByName(SHEETS.summaryEvaluator);
   if (sheet) {
@@ -541,6 +550,14 @@ function refreshDashboard_(applyLayout) {
     'Summary By Evaluator',
     'Active case summary split by evaluator.',
     getEvaluatorSummaryRows_(cases),
+    applyLayout
+  );
+
+  renderSummarySheet_(
+    ss.getSheetByName(SHEETS.summaryDistrictCaseType),
+    'Summary By District And Case Type',
+    'Active case summary split by district and then by Initial / Re-evaluation.',
+    getDistrictCaseTypeSummaryRows_(cases),
     applyLayout
   );
 }
@@ -698,6 +715,19 @@ function getEvaluatorSummaryRows_(cases) {
   ));
 }
 
+function getDistrictCaseTypeSummaryRows_(cases) {
+  const districtNames = [...new Set(cases.map((row) => String(row.District || '').trim()).filter(Boolean))].sort();
+  const rows = [];
+
+  districtNames.forEach((districtName) => {
+    const districtCases = cases.filter((row) => String(row.District || '').trim() === districtName);
+    rows.push(buildSummaryRow_(`${districtName} | Initial`, districtCases.filter((row) => row.CaseType === CASE_TYPES.initial)));
+    rows.push(buildSummaryRow_(`${districtName} | Re-evaluation`, districtCases.filter((row) => row.CaseType === CASE_TYPES.reevaluation)));
+  });
+
+  return rows;
+}
+
 function buildSummaryRow_(label, cases) {
   const summary = getDashboardSummary_(cases);
   return {
@@ -832,6 +862,7 @@ function ensureWorkbookScaffold_(options) {
   ensureSheet_(SHEETS.dashboard, ['SPED Status Reports Dashboard']);
   ensureSheet_(SHEETS.summaryCaseType, ['Summary By Case Type']);
   ensureSheet_(SHEETS.summaryEvaluator, ['Summary By Evaluator']);
+  ensureSheet_(SHEETS.summaryDistrictCaseType, ['Summary By District And Case Type']);
 
   if (settings.seedReferenceData) {
     seedReferenceData_();

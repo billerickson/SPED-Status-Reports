@@ -8,6 +8,7 @@
 - dashboard summary cards for `Total Active`, `Overdue`, `Due This Week`, `Due This Month`, and `Completed`
 - admin archive flow with `ArchiveCases`
 - summary report sheets by case type and by evaluator
+- summary report sheet by district and case type
 
 ## Recommended Next
 - add direct dashboard links or buttons to open a case from the sidebar by `Case ID`

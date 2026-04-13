@@ -63,6 +63,7 @@ Use these sheets for each type of maintenance:
 - `ArchiveCases`
 - `SummaryByCaseType`
 - `SummaryByEvaluator`
+- `SummaryByDistrictCaseType`
   - the sheet is preloaded with dates from January 1, 2026 through June 1, 2027
   - weekends default to `No`
   - weekdays default to `Yes`
@@ -145,6 +146,7 @@ For milestone updates:
   - master dashboard plus one dashboard sheet per district
   - dashboard summary cards for active work, overdue cases, due this week, due this month, and completed cases
   - summary report sheets by case type and by evaluator
+  - summary report sheet by district and case type
   - admin archive flow for completed cases
   - status flow:
     - `Referral Received`
