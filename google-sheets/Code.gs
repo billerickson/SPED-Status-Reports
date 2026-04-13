@@ -877,19 +877,30 @@ function sendMilestoneUpdateNotifications_(existingRow, updatedRow) {
   }
 
   const changedMilestones = getChangedMilestoneFields_(existingRow, updatedRow);
-  if (!changedMilestones.length) {
+  const statusChanged = String(existingRow.Status || '') !== String(updatedRow.Status || '');
+  if (!changedMilestones.length && !statusChanged) {
     return [];
   }
 
   const recipientGroups = getServiceRecipientsForCase_(updatedRow);
-  if (!recipientGroups.to) {
-    return ['Automatic milestone update email skipped because no active service contact emails were configured for the checked services on this case.'];
+  const recipients = mergeNotificationRecipients_(
+    recipientGroups.to,
+    recipientGroups.cc,
+    emailConfig.includeLeadEvaluatorOnMilestoneUpdates ? getEvaluatorEmailByName_(updatedRow.LeadEvaluator) : ''
+  );
+  if (!recipients.to) {
+    return ['Automatic case update email skipped because no active service contact or lead evaluator email was available for this case.'];
   }
 
-  const subject = `SPED Milestone Update: ${updatedRow.StudentName} (${updatedRow.CaseID})`;
+  const subject = statusChanged
+    ? `SPED Status Update: ${updatedRow.StudentName} (${updatedRow.CaseID})`
+    : `SPED Milestone Update: ${updatedRow.StudentName} (${updatedRow.CaseID})`;
   const changedLines = changedMilestones.map((item) => `${item.label}: ${item.oldValue || 'Blank'} -> ${item.newValue || 'Blank'}`);
+  const updateIntro = statusChanged
+    ? 'A SPED case status changed for this case.'
+    : 'A SPED milestone was updated for this case.';
   const plainBody = [
-    'A SPED milestone was updated for this case.',
+    updateIntro,
     '',
     `Student: ${updatedRow.StudentName}`,
     `Case ID: ${updatedRow.CaseID}`,
@@ -899,16 +910,15 @@ function sendMilestoneUpdateNotifications_(existingRow, updatedRow) {
     `District: ${updatedRow.District}`,
     `Lead Evaluator: ${updatedRow.LeadEvaluator}`,
     '',
-    'Changed milestones:',
-    ...changedLines,
-    '',
+    ...(statusChanged ? [`Status Change: ${existingRow.Status || 'Blank'} -> ${updatedRow.Status || 'Blank'}`, ''] : []),
+    ...(changedLines.length ? ['Changed milestones:', ...changedLines, ''] : []),
     `Status: ${updatedRow.Status}`,
     `Primary Deadline: ${formatDate_(updatedRow.PrimaryDeadline)}`,
     `Service Notes: ${updatedRow.ServiceNotes || ''}`,
     `Variance Explanation: ${updatedRow.VarianceExplanation || ''}`,
   ].join('\n');
   const htmlBody = [
-    '<p>A SPED milestone was updated for this case.</p>',
+    `<p>${escapeHtml_(updateIntro)}</p>`,
     '<table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse;">',
     `<tr><th align="left">Student</th><td>${escapeHtml_(updatedRow.StudentName)}</td></tr>`,
     `<tr><th align="left">Case ID</th><td>${escapeHtml_(updatedRow.CaseID)}</td></tr>`,
@@ -920,18 +930,16 @@ function sendMilestoneUpdateNotifications_(existingRow, updatedRow) {
     `<tr><th align="left">Status</th><td>${escapeHtml_(updatedRow.Status)}</td></tr>`,
     `<tr><th align="left">Primary Deadline</th><td>${escapeHtml_(formatDate_(updatedRow.PrimaryDeadline))}</td></tr>`,
     '</table>',
-    '<p><strong>Changed milestones:</strong></p>',
-    `<ul>${changedMilestones.map((item) => `<li>${escapeHtml_(item.label)}: ${escapeHtml_(item.oldValue || 'Blank')} -> ${escapeHtml_(item.newValue || 'Blank')}</li>`).join('')}</ul>`,
+    ...(statusChanged ? [`<p><strong>Status Change:</strong> ${escapeHtml_(existingRow.Status || 'Blank')} -> ${escapeHtml_(updatedRow.Status || 'Blank')}</p>`] : []),
+    ...(changedMilestones.length ? [
+      '<p><strong>Changed milestones:</strong></p>',
+      `<ul>${changedMilestones.map((item) => `<li>${escapeHtml_(item.label)}: ${escapeHtml_(item.oldValue || 'Blank')} -> ${escapeHtml_(item.newValue || 'Blank')}</li>`).join('')}</ul>`,
+    ] : []),
     `<p><strong>Service Notes:</strong> ${escapeHtml_(updatedRow.ServiceNotes || '')}</p>`,
     `<p><strong>Variance Explanation:</strong> ${escapeHtml_(updatedRow.VarianceExplanation || '')}</p>`,
   ].join('');
 
-  const recipients = mergeNotificationRecipients_(
-    recipientGroups.to,
-    recipientGroups.cc,
-    emailConfig.includeLeadEvaluatorOnMilestoneUpdates ? getEvaluatorEmailByName_(updatedRow.LeadEvaluator) : ''
-  );
-  return sendCaseNotificationEmail_(updatedRow.CaseID, 'MilestoneUpdate', recipients.to, recipients.cc, subject, plainBody, htmlBody);
+  return sendCaseNotificationEmail_(updatedRow.CaseID, statusChanged ? 'StatusUpdate' : 'MilestoneUpdate', recipients.to, recipients.cc, subject, plainBody, htmlBody);
 }
 
 function sendCaseNotificationEmail_(caseId, actionLabel, toRecipients, ccRecipients, subject, plainBody, htmlBody) {

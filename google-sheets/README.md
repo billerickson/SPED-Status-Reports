@@ -231,7 +231,7 @@ Each v2 action also writes an entry to `AuditLog`.
 
 Automatic email behavior:
 - a new `Initial` case save can automatically send a referral assignment email to the configured assignment group
-- an update save can automatically send a milestone update email to all active `ServiceContacts` rows that match both the case district and the checked services on the case
+- an update save can automatically send an email for milestone changes and any case status change to all active `ServiceContacts` rows that match both the case district and the checked services on the case
 - the lead evaluator can also be included automatically on both email types using the `Evaluators.Email` value for the selected lead evaluator
 - case saves still complete even if an automatic email cannot be sent; the app shows a warning and logs the failure in `AuditLog`
 
