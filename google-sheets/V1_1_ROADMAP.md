@@ -7,12 +7,13 @@
 - lightweight `Settings` sheet for warning window, timeline colors, and optional uploads folder override
 - dashboard summary cards for `Total Active`, `Overdue`, `Due This Week`, `Due This Month`, and `Completed`
 - admin archive flow with `ArchiveCases`
+- restore flow for archived cases
 - summary report sheets by case type and by evaluator
 - summary report sheet by district and case type
+- selected-row case opening from dashboards and the `Cases` sheet
+- duplicate detection based on `Student Name + DOB + Campus` in addition to `Student ID`
 
 ## Recommended Next
-- add direct dashboard links or buttons to open a case from the sidebar by `Case ID`
-- add duplicate detection based on `Student Name + DOB + Campus` in addition to `Student ID`
 - add delete/unlink support for uploaded documents
 - add a validation/test harness sheet for due-date calculations
 

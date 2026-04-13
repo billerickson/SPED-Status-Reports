@@ -126,6 +126,16 @@ For milestone updates:
 3. Select the existing case.
 4. Then edit milestone fields and save.
 
+To open a case directly from a dashboard or the `Cases` sheet:
+1. Click the row for that case in the spreadsheet.
+2. Use `SPED Status Reports -> Open Selected Case`, or click `Open Selected Row` in the sidebar.
+
+To restore an archived case:
+1. Open `ArchiveCases`.
+2. Click the archived case row you want to restore.
+3. Use `SPED Status Reports -> Restore Selected Archived Case (Admin)` or the sidebar admin button.
+4. Enter the admin code when prompted.
+
 ## Behavior changes from Excel
 - The app opens from a custom Google Sheets menu instead of `Workbook_Open`.
 - Forms are rendered in a sidebar using HTML Service instead of VBA `UserForm`s.
@@ -135,7 +145,7 @@ For milestone updates:
 - The same case model is preserved:
   - `Initial` and `Re-evaluation`
   - milestone updates
-  - duplicate open-case blocking
+  - duplicate open-case blocking by `Student ID`, plus same `Student Name + DOB + Campus`
   - grade level and expanded milestone tracking
   - multiple document links plus file uploads
   - separate `Service Notes` and `Variance Explanation`
@@ -148,6 +158,8 @@ For milestone updates:
   - summary report sheets by case type and by evaluator
   - summary report sheet by district and case type
   - admin archive flow for completed cases
+  - restore flow for archived cases
+  - selected-row case opening from dashboards and the `Cases` sheet
   - status flow:
     - `Referral Received`
     - `Response Sent`

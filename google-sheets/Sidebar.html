@@ -198,6 +198,7 @@
         </div>
         <div class="row">
           <button class="secondary" onclick="showAdmin()">Admin</button>
+          <button class="secondary" onclick="openSelectedRowCase()">Open Selected Row</button>
           <button class="secondary" onclick="refreshDashboard()">Refresh Dashboard</button>
         </div>
       </div>
@@ -385,6 +386,7 @@
         <div class="row">
           <button class="secondary" onclick="runOpenAdminSheet('archive')">Open Archive</button>
           <button class="secondary" onclick="runAdminAction('archive')">Archive Completed</button>
+          <button class="secondary" onclick="runAdminAction('restoreArchive')">Restore Selected Archive Row</button>
         </div>
         <div class="row">
           <button class="secondary" onclick="runOpenAdminSheet('summaryDistrictCaseType')">Open District/Case Type Summary</button>
@@ -439,6 +441,10 @@
             state.bootstrap = bootstrap;
             populateBootstrap(bootstrap);
             setStatus('Ready.', 'success');
+            if (bootstrap.pendingCaseId) {
+              state.mode = 'update';
+              loadCase(bootstrap.pendingCaseId);
+            }
           })
           .withFailureHandler(handleError)
           .getAppBootstrap();
@@ -641,13 +647,35 @@
               handleError(new Error('That case could not be loaded. Refresh the dashboard and try the search again.'));
               return;
             }
+            state.mode = 'update';
             state.selectedCaseId = detail.CaseID;
+            document.getElementById('searchSection').classList.add('hidden');
+            document.getElementById('adminSection').classList.add('hidden');
             document.getElementById('editorSection').classList.remove('hidden');
             fillEditor(detail);
             setStatus(`Loaded ${detail.CaseID}.`, 'success');
           })
           .withFailureHandler(handleError)
           .getCaseDetails(caseId);
+      }
+
+      function openSelectedRowCase() {
+        google.script.run
+          .withSuccessHandler((detail) => {
+            if (!detail || !detail.CaseID) {
+              handleError(new Error('Select a case row from Cases or a dashboard first.'));
+              return;
+            }
+            state.mode = 'update';
+            state.selectedCaseId = detail.CaseID;
+            document.getElementById('searchSection').classList.add('hidden');
+            document.getElementById('adminSection').classList.add('hidden');
+            document.getElementById('editorSection').classList.remove('hidden');
+            fillEditor(detail);
+            setStatus(`Loaded ${detail.CaseID} from the selected row.`, 'success');
+          })
+          .withFailureHandler(handleError)
+          .getSelectedCaseDetails();
       }
 
       function fillEditor(detail) {
@@ -830,6 +858,7 @@
           show: 'showAllSheets',
           protect: 'applyAdminSheetProtection',
           archive: 'archiveCompletedCases',
+          restoreArchive: 'restoreSelectedArchivedCase',
         };
         const call = actions[action];
         google.script.run

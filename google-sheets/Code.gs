@@ -2,6 +2,9 @@ const ADMIN_ACCESS_CODE = 'CHANGE_ME_BEFORE_PRODUCTION';
 const ADMIN_EDITOR_EMAILS = [];
 const UPLOADS_FOLDER_ID = '';
 const DISTRICT_DASHBOARD_PREFIX = 'Dashboard - ';
+const DOCUMENT_PROPERTIES = {
+  pendingCaseId: 'SPED_PENDING_CASE_ID',
+};
 
 const SHEETS = {
   cases: 'Cases',
@@ -116,6 +119,7 @@ function onOpen() {
     .addSeparator()
     .addItem('Refresh Dashboard', 'refreshDashboard')
     .addItem('Open Dashboard', 'openDashboard')
+    .addItem('Open Selected Case', 'openSelectedCaseFromActiveRow')
     .addSeparator()
     .addItem('Open Districts (Admin)', 'openDistrictsSheet')
     .addItem('Open Campuses (Admin)', 'openCampusesSheet')
@@ -128,6 +132,7 @@ function onOpen() {
     .addItem('Open Case Type Summary', 'openCaseTypeSummarySheet')
     .addItem('Open Evaluator Summary', 'openEvaluatorSummarySheet')
     .addItem('Archive Completed Cases (Admin)', 'archiveCompletedCases')
+    .addItem('Restore Selected Archived Case (Admin)', 'restoreSelectedArchivedCase')
     .addItem('Sync Calendar Grid', 'syncDistrictCalendarGrid')
     .addItem('Reapply Admin Sheet Protection', 'reapplyAdminSheetProtection')
     .addToUi();
@@ -173,6 +178,7 @@ function getAppBootstrap() {
   return {
     caseTypes: [CASE_TYPES.initial, CASE_TYPES.reevaluation],
     services: SERVICE_FIELDS,
+    pendingCaseId: consumePendingCaseId_(),
     districts: getActiveColumnValues_(SHEETS.districts, 'District'),
     campuses: getActiveRows_(SHEETS.campuses).map((row) => ({
       campus: row.Campus,
@@ -201,6 +207,14 @@ function previewTimeline(input) {
 
 function getLateDateWarnings(payload) {
   return getLateDateWarnings_(payload, buildProjectedDates_(payload));
+}
+
+function getSelectedCaseDetails() {
+  const selection = getSelectedCaseReference_();
+  if (!selection || selection.location !== 'active') {
+    throw new Error('Select a case row from Cases or a dashboard first.');
+  }
+  return getCaseDetails(selection.caseId);
 }
 
 function searchCases(studentId, caseType) {
@@ -267,8 +281,9 @@ function saveNewCase(payload) {
   try {
     validatePayload_(payload, false);
 
-    if (duplicateOpenCaseExists_(payload.studentId, payload.caseType)) {
-      throw new Error(`An open ${payload.caseType} case already exists for this student.`);
+    const duplicate = findOpenDuplicateCase_(payload, payload.caseType);
+    if (duplicate) {
+      throw new Error(buildDuplicateCaseMessage_(duplicate, payload.caseType));
     }
 
     const timeline = buildProjectedDates_(payload);
@@ -306,10 +321,9 @@ function updateExistingCase(payload) {
     }
     const existing = existingRecord.row;
 
-    if (
-      duplicateOpenCaseExists_(payload.studentId, existing.CaseType, payload.caseId)
-    ) {
-      throw new Error(`A different open ${existing.CaseType} case already exists for this student.`);
+    const duplicate = findOpenDuplicateCase_(payload, existing.CaseType, payload.caseId);
+    if (duplicate) {
+      throw new Error(buildDuplicateCaseMessage_(duplicate, existing.CaseType));
     }
 
     const merged = Object.assign({}, existing, {
@@ -401,6 +415,16 @@ function openDashboard() {
   }
 }
 
+function openSelectedCaseFromActiveRow() {
+  ensureWorkbookReady_();
+  const selection = getSelectedCaseReference_();
+  if (!selection || selection.location !== 'active') {
+    throw new Error('Select a case row from Cases or a dashboard first.');
+  }
+  setPendingCaseId_(selection.caseId);
+  showSpedSidebar();
+}
+
 function openDistrictsSheet(adminCode) {
   openAdminSheet_(SHEETS.districts, adminCode);
 }
@@ -483,6 +507,28 @@ function archiveCompletedCases(adminCode) {
   refreshDashboard_(true);
   SpreadsheetApp.getUi().alert(`${completedCases.length} completed case(s) were archived.`);
   return completedCases.length;
+}
+
+function restoreSelectedArchivedCase(adminCode) {
+  let resolvedCode = adminCode;
+  if (!resolvedCode) {
+    resolvedCode = SpreadsheetApp.getUi().prompt('Enter the admin access code to restore an archived case.').getResponseText();
+  }
+
+  if (!validateAdminCode(resolvedCode)) {
+    throw new Error('Admin access denied.');
+  }
+
+  ensureWorkbookScaffold_();
+
+  const selection = getSelectedCaseReference_();
+  if (!selection || selection.location !== 'archive') {
+    throw new Error('Select a row from ArchiveCases first.');
+  }
+
+  const restoredCaseId = restoreArchivedCaseById_(selection.caseId);
+  SpreadsheetApp.getUi().alert(`${restoredCaseId} was restored to the active Cases sheet.`);
+  return restoredCaseId;
 }
 
 function showAllSheets(adminCode) {
@@ -1206,6 +1252,19 @@ function openAdminSheet_(sheetName, adminCode) {
   SpreadsheetApp.getActive().setActiveSheet(sheet);
 }
 
+function setPendingCaseId_(caseId) {
+  PropertiesService.getDocumentProperties().setProperty(DOCUMENT_PROPERTIES.pendingCaseId, String(caseId || '').trim());
+}
+
+function consumePendingCaseId_() {
+  const properties = PropertiesService.getDocumentProperties();
+  const caseId = String(properties.getProperty(DOCUMENT_PROPERTIES.pendingCaseId) || '').trim();
+  if (caseId) {
+    properties.deleteProperty(DOCUMENT_PROPERTIES.pendingCaseId);
+  }
+  return caseId;
+}
+
 function buildStoredCaseRow_(caseId, payload, timeline, createdAt, updatedAt) {
   const responseSentDate = parseDate_(payload.responseSentDate);
   const actualConsentDate = parseDate_(payload.actualConsentDate);
@@ -1380,6 +1439,30 @@ function getLateDateWarnings_(payload, timeline) {
   }
 
   return lateDates;
+}
+
+function restoreArchivedCaseById_(caseId) {
+  const archivedRecord = findArchivedCaseRecord_(caseId);
+  if (!archivedRecord) {
+    throw new Error(`Archived case not found: ${caseId}`);
+  }
+
+  const duplicate = findOpenDuplicateCase_(archivedRecord.row, archivedRecord.row.CaseType);
+  if (duplicate) {
+    throw new Error(buildDuplicateCaseMessage_(duplicate, archivedRecord.row.CaseType));
+  }
+
+  appendRow_(SHEETS.cases, archivedRecord.row, CASE_HEADERS);
+
+  const remainingArchivedRows = getTableRows_(SHEETS.archive, ARCHIVE_HEADERS).filter((row) => row.CaseID !== caseId);
+  rewriteSheetRows_(SHEETS.archive, ARCHIVE_HEADERS, remainingArchivedRows);
+
+  appendAuditRows_([
+    buildAuditRow_(caseId, 'Restore', 'Status', 'Archived', archivedRecord.row.Status),
+  ]);
+
+  refreshDashboard_(true);
+  return caseId;
 }
 
 function logCaseCreation_(row) {
@@ -1703,24 +1786,63 @@ function getEvaluationDueDate_(row, timeline) {
   return row.projectedFiiEDueDate || row.ProjectedFIIEDueDate || (timeline ? timeline.projectedFiiEDueDate : '');
 }
 
-function duplicateOpenCaseExists_(studentId, caseType, ignoreCaseId) {
-  const normalizedStudentId = normalizeStudentId_(studentId);
+function findOpenDuplicateCase_(candidate, caseType, ignoreCaseId) {
+  const candidateIdentity = buildCaseIdentity_(candidate);
   const rows = getTableRows_(SHEETS.cases, CASE_HEADERS);
-  return rows.some((row) => {
-    if (normalizeStudentId_(row.StudentID) !== normalizedStudentId) {
-      return false;
-    }
+
+  for (let index = 0; index < rows.length; index += 1) {
+    const row = rows[index];
     if (row.CaseType !== caseType) {
-      return false;
+      continue;
     }
     if (row.Status === STATUSES.completed) {
-      return false;
+      continue;
     }
     if (ignoreCaseId && row.CaseID === ignoreCaseId) {
-      return false;
+      continue;
     }
-    return true;
-  });
+
+    const rowIdentity = buildCaseIdentity_(row);
+    if (candidateIdentity.studentId && rowIdentity.studentId && candidateIdentity.studentId === rowIdentity.studentId) {
+      return {
+        caseId: row.CaseID,
+        matchReason: 'Student ID',
+        studentName: row.StudentName,
+        studentId: row.StudentID,
+      };
+    }
+
+    if (
+      candidateIdentity.studentName &&
+      candidateIdentity.dobKey &&
+      candidateIdentity.campus &&
+      candidateIdentity.studentName === rowIdentity.studentName &&
+      candidateIdentity.dobKey === rowIdentity.dobKey &&
+      candidateIdentity.campus === rowIdentity.campus
+    ) {
+      return {
+        caseId: row.CaseID,
+        matchReason: 'Student Name + DOB + Campus',
+        studentName: row.StudentName,
+        studentId: row.StudentID,
+      };
+    }
+  }
+
+  return null;
+}
+
+function buildDuplicateCaseMessage_(duplicate, caseType) {
+  return `A possible duplicate open ${caseType} case already exists: ${duplicate.caseId} (${duplicate.studentName || 'Unknown Student'}${duplicate.studentId ? `, Student ID ${duplicate.studentId}` : ''}). Match found by ${duplicate.matchReason}.`;
+}
+
+function buildCaseIdentity_(source) {
+  return {
+    studentId: normalizeStudentId_(source.StudentID !== undefined ? source.StudentID : source.studentId),
+    studentName: normalizeComparisonText_(source.StudentName !== undefined ? source.StudentName : source.studentName),
+    dobKey: getDateKey_(source.DOB !== undefined ? source.DOB : source.dob),
+    campus: normalizeComparisonText_(source.Campus !== undefined ? source.Campus : source.campus),
+  };
 }
 
 function findCaseRecord_(caseId) {
@@ -1743,6 +1865,60 @@ function findCaseRecord_(caseId) {
         rowIndex: index + 2,
       };
     }
+  }
+
+  return null;
+}
+
+function findArchivedCaseRecord_(caseId) {
+  const sheet = SpreadsheetApp.getActive().getSheetByName(SHEETS.archive);
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) {
+    return null;
+  }
+
+  const headerMap = getHeaderMap_(ARCHIVE_HEADERS);
+  const values = sheet.getRange(2, 1, lastRow - 1, ARCHIVE_HEADERS.length).getValues();
+
+  for (let index = 0; index < values.length; index += 1) {
+    if (!String(values[index][headerMap.CaseID] || '').trim()) {
+      continue;
+    }
+    if (String(values[index][headerMap.CaseID]).trim() === String(caseId).trim()) {
+      return {
+        row: toObject_(ARCHIVE_HEADERS, values[index]),
+        rowIndex: index + 2,
+      };
+    }
+  }
+
+  return null;
+}
+
+function getSelectedCaseReference_() {
+  const spreadsheet = SpreadsheetApp.getActive();
+  const range = spreadsheet.getActiveRange();
+  if (!range) {
+    return null;
+  }
+
+  const caseId = String(range.getSheet().getRange(range.getRow(), 1).getDisplayValue() || '').trim();
+  if (!caseId) {
+    return null;
+  }
+
+  if (findCaseRecord_(caseId)) {
+    return {
+      caseId,
+      location: 'active',
+    };
+  }
+
+  if (findArchivedCaseRecord_(caseId)) {
+    return {
+      caseId,
+      location: 'archive',
+    };
   }
 
   return null;
@@ -2040,6 +2216,18 @@ function normalizeStudentId_(value) {
   }
 
   return text;
+}
+
+function normalizeComparisonText_(value) {
+  return String(value === undefined || value === null ? '' : value)
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
+}
+
+function getDateKey_(value) {
+  const dateValue = parseDate_(value);
+  return dateValue ? isoDateKey_(dateValue) : '';
 }
 
 function toObject_(headers, values) {
