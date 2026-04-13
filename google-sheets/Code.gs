@@ -236,7 +236,7 @@ function getCaseDetails(caseId) {
     })
   );
 
-  return normalizeCaseForUi_(row);
+  return toHtmlSafeObject_(normalizeCaseForUi_(row));
 }
 
 function saveNewCase(payload) {
@@ -1314,10 +1314,10 @@ function uploadFilesToCase(caseId, files) {
 
   const uploads = Array.isArray(files) ? files : [];
   if (!uploads.length) {
-    return {
+    return toHtmlSafeObject_({
       documents: normalizeDocumentsForUi_(getCaseDocuments_(caseId)),
       documentsText: getCaseDocumentsText_(caseId),
-    };
+    });
   }
 
   const folder = getCaseUploadFolder_(caseId);
@@ -1345,10 +1345,10 @@ function uploadFilesToCase(caseId, files) {
   replaceCaseDocuments_(caseId, buildCaseDocumentsText_(existingDocuments));
   refreshDashboard_(false);
 
-  return {
+  return toHtmlSafeObject_({
     documents: normalizeDocumentsForUi_(getCaseDocuments_(caseId)),
     documentsText: getCaseDocumentsText_(caseId),
-  };
+  });
 }
 
 function parseDocumentLines_(rawDocumentText, caseId) {
@@ -1478,6 +1478,18 @@ function normalizeCaseForUi_(row) {
   });
 
   return output;
+}
+
+function toHtmlSafeObject_(value) {
+  return JSON.parse(JSON.stringify(value, (key, currentValue) => {
+    if (currentValue === undefined) {
+      return '';
+    }
+    if (Object.prototype.toString.call(currentValue) === '[object Date]' && !Number.isNaN(currentValue.getTime())) {
+      return currentValue.toISOString();
+    }
+    return currentValue;
+  }));
 }
 
 function parseDate_(value) {
