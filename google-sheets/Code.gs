@@ -827,9 +827,6 @@ function sendNewReferralAssignmentNotifications_(row) {
   if (!emailConfig.autoSendNewReferralAssignments) {
     return [];
   }
-  if (!emailConfig.newReferralAssignmentTo) {
-    return ['Automatic new referral assignment email skipped because NewReferralAssignmentTo is blank in Settings.'];
-  }
 
   const subject = `New SPED Referral Assignment: ${row.StudentName} (${row.CaseID})`;
   const plainBody = [
@@ -867,6 +864,9 @@ function sendNewReferralAssignmentNotifications_(row) {
     emailConfig.newReferralAssignmentCc,
     emailConfig.includeLeadEvaluatorOnNewAssignments ? getEvaluatorEmailByName_(row.LeadEvaluator) : ''
   );
+  if (!recipients.to) {
+    return ['Automatic new referral assignment email skipped because no assignment recipients or lead evaluator email were available for this case.'];
+  }
   return sendCaseNotificationEmail_(row.CaseID, 'NewReferralAssignment', recipients.to, recipients.cc, subject, plainBody, htmlBody);
 }
 
