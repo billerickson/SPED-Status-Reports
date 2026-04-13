@@ -39,6 +39,7 @@ Use the `SPED Status Reports` menu in the spreadsheet.
    - `Open Districts (Admin)`
    - `Open Campuses (Admin)`
    - `Open Evaluators (Admin)`
+   - `Open Service Contacts (Admin)`
    - `Open Calendars (Admin)`
    - `Open Due Date Tests (Admin)`
    - `Open Dashboard Views (Admin)`
@@ -60,9 +61,18 @@ Use these sheets for each type of maintenance:
 - `Evaluators`
   - one row per evaluator
   - set `Active = Yes` for evaluators that should appear in dropdowns
+- `ServiceContacts`
+  - one row per service area
+  - use `EmailTo` for milestone update recipients for that service
+  - use `EmailCc` for optional copied recipients
+  - set `Active = Yes` for service groups that should receive automatic milestone updates
 - `DistrictCalendars`
 - `Settings`
   - v2 communication settings also live here:
+    - `AutoSendNewReferralAssignments`
+    - `NewReferralAssignmentTo`
+    - `NewReferralAssignmentCc`
+    - `AutoSendMilestoneUpdates`
     - `NotificationEmailTo`
     - `NotificationEmailCc`
     - `NotificationEmailBcc`
@@ -125,6 +135,7 @@ The data is stored inside this same Google Sheet on visible protected tabs:
 - `Districts`
 - `Campuses`
 - `Evaluators`
+- `ServiceContacts`
 - `DistrictCalendars`
 - `Settings`
 - `AuditLog`
@@ -176,19 +187,27 @@ To remove uploads:
 3. Use `Delete` to remove the document from the case and send the linked Google Drive file to trash when the script has permission.
 
 ## V2 Gmail And Calendar
-The v2 integration is intentionally conservative:
+The manual v2 communication tools are intentionally conservative:
 - Gmail actions create drafts only
 - Calendar actions create events only
-- nothing auto-sends
 - nothing runs on a timer yet
+
+Automatic email notifications are a separate v2 workflow:
+- new referral assignment emails can auto-send on case creation
+- milestone update emails can auto-send on case update
+- these use Settings plus the `ServiceContacts` sheet
 
 Before using v2:
 1. Open `Settings`.
-2. Fill in `NotificationEmailTo` with the default recipients for draft creation.
-3. Optional: fill in CC, BCC, reply-to, sender name, and Gmail alias settings.
-4. Optional: fill in `NotificationCalendarId` if events should go to a dedicated SPED calendar.
+2. Set `AutoSendNewReferralAssignments = Yes` if new case creation should email the assignment group automatically.
+3. Fill in `NewReferralAssignmentTo` and optional `NewReferralAssignmentCc`.
+4. Set `AutoSendMilestoneUpdates = Yes` if case milestone updates should email the checked service contacts automatically.
+5. Open `ServiceContacts` and fill in the email groups for each service area.
+6. Fill in `NotificationEmailTo` with the default recipients for manual draft creation.
+7. Optional: fill in CC, BCC, reply-to, sender name, and Gmail alias settings.
+8. Optional: fill in `NotificationCalendarId` if events should go to a dedicated SPED calendar.
    If left blank, events go to the authorized user's default calendar.
-5. Save the settings and reauthorize the script if prompted.
+9. Save the settings and reauthorize the script if prompted.
 
 Available v2 case actions:
 - `Due Soon Draft`
@@ -203,6 +222,11 @@ How they work:
 - `Deadline Reminder` uses the case `PrimaryDeadline` and the configured reminder hour/duration settings.
 
 Each v2 action also writes an entry to `AuditLog`.
+
+Automatic email behavior:
+- a new `Initial` case save can automatically send a referral assignment email to the configured assignment group
+- an update save can automatically send a milestone update email to all active `ServiceContacts` rows that match checked services on the case
+- case saves still complete even if an automatic email cannot be sent; the app shows a warning and logs the failure in `AuditLog`
 
 To manage saved dashboard views:
 1. Open `DashboardViews`.
@@ -255,6 +279,8 @@ Bulk admin safeguards now in place:
   - archive and restore confirmations before bulk admin changes run
   - Gmail draft creation for due-soon and overdue case communication
   - Calendar event creation for ARD scheduling and deadline reminders
+  - automatic new referral assignment emails to a configured group
+  - automatic milestone update emails to the checked service groups on the case
   - status flow:
     - `Referral Received`
     - `Response Sent`

@@ -14,6 +14,7 @@ const SHEETS = {
   documents: 'CaseDocuments',
   tests: 'DueDateTests',
   views: 'DashboardViews',
+  serviceContacts: 'ServiceContacts',
   districts: 'Districts',
   campuses: 'Campuses',
   evaluators: 'Evaluators',
@@ -85,6 +86,7 @@ const CASE_HEADERS = [
 const DOCUMENT_HEADERS = ['DocumentID', 'CaseID', 'DocumentLabel', 'DocumentPath', 'AddedAt'];
 const ARCHIVE_HEADERS = CASE_HEADERS.concat(['ArchivedAt']);
 const VIEW_HEADERS = ['ViewName', 'District', 'Evaluator', 'CaseType', 'Status', 'DeadlineBucket', 'Active', 'Description'];
+const SERVICE_CONTACT_HEADERS = ['ServiceField', 'ServiceLabel', 'EmailTo', 'EmailCc', 'Active'];
 const TEST_HEADERS = [
   'ScenarioName',
   'CaseType',
@@ -152,6 +154,7 @@ function onOpen() {
     .addItem('Open Districts (Admin)', 'openDistrictsSheet')
     .addItem('Open Campuses (Admin)', 'openCampusesSheet')
     .addItem('Open Evaluators (Admin)', 'openEvaluatorsSheet')
+    .addItem('Open Service Contacts (Admin)', 'openServiceContactsSheet')
     .addItem('Open Calendars (Admin)', 'openCalendarsSheet')
     .addItem('Open Due Date Tests (Admin)', 'openDueDateTestsSheet')
     .addItem('Open Dashboard Views (Admin)', 'openDashboardViewsSheet')
@@ -175,6 +178,7 @@ function resetRequestCache_() {
     tableRows: {},
     activeRows: {},
     settingValues: {},
+    serviceContacts: null,
     districtConfigs: {},
     districtCalendars: {},
     caseRecords: {},
@@ -417,11 +421,13 @@ function saveNewCase(payload) {
     logCaseCreation_(row);
     logDocumentsUpdate_(caseId, '', payload.documentLinks || '');
     refreshDashboard_(false);
+    const notifications = sendNewReferralAssignmentNotifications_(row);
 
     return {
       ok: true,
       caseId,
       timeline: normalizeTimelineForUi_(timeline),
+      notifications,
     };
   } finally {
     lock.releaseLock();
@@ -514,11 +520,13 @@ function updateExistingCase(payload) {
     logCaseUpdate_(existing, merged);
     logDocumentsUpdate_(payload.caseId, previousDocumentsText, payload.documentLinks || '');
     refreshDashboard_(false);
+    const notifications = sendMilestoneUpdateNotifications_(existing, merged);
 
     return {
       ok: true,
       caseId: payload.caseId,
       timeline: normalizeTimelineForUi_(timeline),
+      notifications,
     };
   } finally {
     lock.releaseLock();
@@ -605,6 +613,11 @@ function openCampusesSheet(adminCode) {
 function openEvaluatorsSheet(adminCode) {
   resetRequestCache_();
   openAdminSheet_(SHEETS.evaluators, adminCode);
+}
+
+function openServiceContactsSheet(adminCode) {
+  resetRequestCache_();
+  openAdminSheet_(SHEETS.serviceContacts, adminCode);
 }
 
 function openCalendarsSheet(adminCode) {
@@ -804,6 +817,195 @@ function createCaseEmailDraft(caseId, draftType) {
     to: emailConfig.to,
     draftId: safeMethodCall_(draft, 'getId', ''),
   });
+}
+
+function sendNewReferralAssignmentNotifications_(row) {
+  if (row.CaseType !== CASE_TYPES.initial) {
+    return [];
+  }
+  const emailConfig = getEmailIntegrationConfig_();
+  if (!emailConfig.autoSendNewReferralAssignments) {
+    return [];
+  }
+  if (!emailConfig.newReferralAssignmentTo) {
+    return ['Automatic new referral assignment email skipped because NewReferralAssignmentTo is blank in Settings.'];
+  }
+
+  const subject = `New SPED Referral Assignment: ${row.StudentName} (${row.CaseID})`;
+  const plainBody = [
+    'A new SPED referral assignment has been created.',
+    '',
+    `Student: ${row.StudentName}`,
+    `Case ID: ${row.CaseID}`,
+    `Case Type: ${row.CaseType}`,
+    `Student ID: ${row.StudentID}`,
+    `Campus: ${row.Campus}`,
+    `District: ${row.District}`,
+    `Lead Evaluator: ${row.LeadEvaluator}`,
+    `Referral Received Date: ${formatDate_(row.ReferralReceivedDate)}`,
+    `Response Due Date: ${formatDate_(row.ResponseDueDate)}`,
+    `Primary Deadline: ${formatDate_(row.PrimaryDeadline)}`,
+  ].join('\n');
+  const htmlBody = [
+    '<p>A new SPED referral assignment has been created.</p>',
+    '<table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse;">',
+    `<tr><th align="left">Student</th><td>${escapeHtml_(row.StudentName)}</td></tr>`,
+    `<tr><th align="left">Case ID</th><td>${escapeHtml_(row.CaseID)}</td></tr>`,
+    `<tr><th align="left">Case Type</th><td>${escapeHtml_(row.CaseType)}</td></tr>`,
+    `<tr><th align="left">Student ID</th><td>${escapeHtml_(row.StudentID)}</td></tr>`,
+    `<tr><th align="left">Campus</th><td>${escapeHtml_(row.Campus)}</td></tr>`,
+    `<tr><th align="left">District</th><td>${escapeHtml_(row.District)}</td></tr>`,
+    `<tr><th align="left">Lead Evaluator</th><td>${escapeHtml_(row.LeadEvaluator)}</td></tr>`,
+    `<tr><th align="left">Referral Received Date</th><td>${escapeHtml_(formatDate_(row.ReferralReceivedDate))}</td></tr>`,
+    `<tr><th align="left">Response Due Date</th><td>${escapeHtml_(formatDate_(row.ResponseDueDate))}</td></tr>`,
+    `<tr><th align="left">Primary Deadline</th><td>${escapeHtml_(formatDate_(row.PrimaryDeadline))}</td></tr>`,
+    '</table>',
+  ].join('');
+
+  return sendCaseNotificationEmail_(row.CaseID, 'NewReferralAssignment', emailConfig.newReferralAssignmentTo, emailConfig.newReferralAssignmentCc, subject, plainBody, htmlBody);
+}
+
+function sendMilestoneUpdateNotifications_(existingRow, updatedRow) {
+  const emailConfig = getEmailIntegrationConfig_();
+  if (!emailConfig.autoSendMilestoneUpdates) {
+    return [];
+  }
+
+  const changedMilestones = getChangedMilestoneFields_(existingRow, updatedRow);
+  if (!changedMilestones.length) {
+    return [];
+  }
+
+  const recipientGroups = getServiceRecipientsForCase_(updatedRow);
+  if (!recipientGroups.to) {
+    return ['Automatic milestone update email skipped because no active service contact emails were configured for the checked services on this case.'];
+  }
+
+  const subject = `SPED Milestone Update: ${updatedRow.StudentName} (${updatedRow.CaseID})`;
+  const changedLines = changedMilestones.map((item) => `${item.label}: ${item.oldValue || 'Blank'} -> ${item.newValue || 'Blank'}`);
+  const plainBody = [
+    'A SPED milestone was updated for this case.',
+    '',
+    `Student: ${updatedRow.StudentName}`,
+    `Case ID: ${updatedRow.CaseID}`,
+    `Case Type: ${updatedRow.CaseType}`,
+    `Student ID: ${updatedRow.StudentID}`,
+    `Campus: ${updatedRow.Campus}`,
+    `District: ${updatedRow.District}`,
+    `Lead Evaluator: ${updatedRow.LeadEvaluator}`,
+    '',
+    'Changed milestones:',
+    ...changedLines,
+    '',
+    `Status: ${updatedRow.Status}`,
+    `Primary Deadline: ${formatDate_(updatedRow.PrimaryDeadline)}`,
+    `Service Notes: ${updatedRow.ServiceNotes || ''}`,
+    `Variance Explanation: ${updatedRow.VarianceExplanation || ''}`,
+  ].join('\n');
+  const htmlBody = [
+    '<p>A SPED milestone was updated for this case.</p>',
+    '<table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse;">',
+    `<tr><th align="left">Student</th><td>${escapeHtml_(updatedRow.StudentName)}</td></tr>`,
+    `<tr><th align="left">Case ID</th><td>${escapeHtml_(updatedRow.CaseID)}</td></tr>`,
+    `<tr><th align="left">Case Type</th><td>${escapeHtml_(updatedRow.CaseType)}</td></tr>`,
+    `<tr><th align="left">Student ID</th><td>${escapeHtml_(updatedRow.StudentID)}</td></tr>`,
+    `<tr><th align="left">Campus</th><td>${escapeHtml_(updatedRow.Campus)}</td></tr>`,
+    `<tr><th align="left">District</th><td>${escapeHtml_(updatedRow.District)}</td></tr>`,
+    `<tr><th align="left">Lead Evaluator</th><td>${escapeHtml_(updatedRow.LeadEvaluator)}</td></tr>`,
+    `<tr><th align="left">Status</th><td>${escapeHtml_(updatedRow.Status)}</td></tr>`,
+    `<tr><th align="left">Primary Deadline</th><td>${escapeHtml_(formatDate_(updatedRow.PrimaryDeadline))}</td></tr>`,
+    '</table>',
+    '<p><strong>Changed milestones:</strong></p>',
+    `<ul>${changedMilestones.map((item) => `<li>${escapeHtml_(item.label)}: ${escapeHtml_(item.oldValue || 'Blank')} -> ${escapeHtml_(item.newValue || 'Blank')}</li>`).join('')}</ul>`,
+    `<p><strong>Service Notes:</strong> ${escapeHtml_(updatedRow.ServiceNotes || '')}</p>`,
+    `<p><strong>Variance Explanation:</strong> ${escapeHtml_(updatedRow.VarianceExplanation || '')}</p>`,
+  ].join('');
+
+  return sendCaseNotificationEmail_(updatedRow.CaseID, 'MilestoneUpdate', recipientGroups.to, recipientGroups.cc, subject, plainBody, htmlBody);
+}
+
+function sendCaseNotificationEmail_(caseId, actionLabel, toRecipients, ccRecipients, subject, plainBody, htmlBody) {
+  try {
+    const options = {
+      htmlBody,
+      name: String(getSettingValue_('NotificationSenderName', 'SPED Status Reports') || '').trim() || 'SPED Status Reports',
+    };
+    const replyTo = String(getSettingValue_('NotificationReplyTo', '') || '').trim();
+    const alias = String(getSettingValue_('NotificationFromAlias', '') || '').trim();
+
+    if (ccRecipients) {
+      options.cc = ccRecipients;
+    }
+    if (replyTo) {
+      options.replyTo = replyTo;
+    }
+    if (alias) {
+      options.from = alias;
+    }
+
+    GmailApp.sendEmail(toRecipients, subject, plainBody, options);
+    appendAuditRows_([
+      buildAuditRow_(caseId, 'EmailSend', actionLabel, '', `To=${toRecipients}; Cc=${ccRecipients || ''}; Subject=${subject}`),
+    ]);
+    return [];
+  } catch (error) {
+    appendAuditRows_([
+      buildAuditRow_(caseId, 'EmailError', actionLabel, '', String(error && error.message ? error.message : error)),
+    ]);
+    return [`Automatic email could not be sent for ${actionLabel}: ${error && error.message ? error.message : error}`];
+  }
+}
+
+function getServiceRecipientsForCase_(row) {
+  const contacts = getActiveServiceContacts_();
+  const toSet = new Set();
+  const ccSet = new Set();
+
+  SERVICE_FIELDS.forEach((field) => {
+    if (Number(row[field]) !== 1) {
+      return;
+    }
+    const contact = contacts.find((item) => item.ServiceField === field);
+    if (!contact) {
+      return;
+    }
+    splitEmails_(contact.EmailTo).forEach((email) => toSet.add(email));
+    splitEmails_(contact.EmailCc).forEach((email) => ccSet.add(email));
+  });
+
+  const to = [...toSet].filter(Boolean);
+  const cc = [...ccSet].filter((email) => email && !toSet.has(email));
+  return {
+    to: to.join(','),
+    cc: cc.join(','),
+  };
+}
+
+function splitEmails_(value) {
+  return String(value || '')
+    .split(',')
+    .map((email) => email.trim())
+    .filter(Boolean);
+}
+
+function getChangedMilestoneFields_(existingRow, updatedRow) {
+  const fields = [
+    ['ResponseSentDate', 'Response Sent Date'],
+    ['ActualConsentDate', 'Consent Date'],
+    ['EvaluationStartedDate', 'Evaluation Started Date'],
+    ['ActualFIIEDate', 'Evaluation Date'],
+    ['ARDScheduledDate', 'ARD Scheduled Date'],
+    ['ActualARDDate', 'ARD Date'],
+  ];
+
+  return fields
+    .map((item) => ({
+      key: item[0],
+      label: item[1],
+      oldValue: formatDate_(existingRow[item[0]]),
+      newValue: formatDate_(updatedRow[item[0]]),
+    }))
+    .filter((item) => item.oldValue !== item.newValue);
 }
 
 function createCaseCalendarEvent(caseId, eventType) {
@@ -1241,6 +1443,7 @@ function ensureWorkbookScaffold_(options) {
   ensureSheet_(SHEETS.documents, DOCUMENT_HEADERS);
   ensureSheet_(SHEETS.tests, TEST_HEADERS);
   ensureSheet_(SHEETS.views, VIEW_HEADERS);
+  ensureSheet_(SHEETS.serviceContacts, SERVICE_CONTACT_HEADERS);
   ensureSheet_(SHEETS.districts, DISTRICT_HEADERS);
   ensureSheet_(SHEETS.campuses, CAMPUS_HEADERS);
   ensureSheet_(SHEETS.evaluators, EVALUATOR_HEADERS);
@@ -1533,6 +1736,7 @@ function seedReferenceData_() {
   seedSettings_();
   seedDueDateTests_();
   seedSavedViews_();
+  seedServiceContacts_();
 
   maybeAppendSeedRow_(SHEETS.districts, DISTRICT_HEADERS, {
     District: 'Sample ISD',
@@ -1553,6 +1757,24 @@ function seedReferenceData_() {
     Email: 'sample@example.org',
     Active: 'Yes',
   });
+}
+
+function seedServiceContacts_() {
+  const sheet = SpreadsheetApp.getActive().getSheetByName(SHEETS.serviceContacts);
+  if (sheet.getLastRow() > 1) {
+    return;
+  }
+
+  const rows = SERVICE_FIELDS.map((field) => ({
+    ServiceField: field,
+    ServiceLabel: SERVICE_LABELS[field] || field,
+    EmailTo: '',
+    EmailCc: '',
+    Active: 'Yes',
+  }));
+
+  const values = rows.map((row) => SERVICE_CONTACT_HEADERS.map((header) => (row[header] === undefined ? '' : row[header])));
+  sheet.getRange(2, 1, values.length, SERVICE_CONTACT_HEADERS.length).setValues(values);
 }
 
 function seedSavedViews_() {
@@ -1656,6 +1878,10 @@ function seedSettings_() {
   ensureSettingRow_('PinkDeadlineColor', '#f4cccc', 'Color used when a deadline is within the warning window.');
   ensureSettingRow_('RedDeadlineColor', '#ff9999', 'Color used when a due date is missed.');
   ensureSettingRow_('UploadsFolderIdOverride', '', 'Optional Google Drive folder ID used for uploaded documents.');
+  ensureSettingRow_('AutoSendNewReferralAssignments', 'No', 'Set to Yes to automatically send assignment emails when a new case is created.');
+  ensureSettingRow_('NewReferralAssignmentTo', '', 'Comma-separated recipients for automatic new referral assignment emails.');
+  ensureSettingRow_('NewReferralAssignmentCc', '', 'Optional CC recipients for automatic new referral assignment emails.');
+  ensureSettingRow_('AutoSendMilestoneUpdates', 'No', 'Set to Yes to automatically send milestone update emails to selected service contacts.');
   ensureSettingRow_('NotificationEmailTo', '', 'Comma-separated email recipients used for Gmail draft creation.');
   ensureSettingRow_('NotificationEmailCc', '', 'Optional comma-separated CC recipients for Gmail drafts.');
   ensureSettingRow_('NotificationEmailBcc', '', 'Optional comma-separated BCC recipients for Gmail drafts.');
@@ -1672,6 +1898,10 @@ function seedSettings_() {
 
 function getEmailIntegrationConfig_() {
   return {
+    autoSendNewReferralAssignments: String(getSettingValue_('AutoSendNewReferralAssignments', 'No') || '').toLowerCase() === 'yes',
+    newReferralAssignmentTo: String(getSettingValue_('NewReferralAssignmentTo', '') || '').trim(),
+    newReferralAssignmentCc: String(getSettingValue_('NewReferralAssignmentCc', '') || '').trim(),
+    autoSendMilestoneUpdates: String(getSettingValue_('AutoSendMilestoneUpdates', 'No') || '').toLowerCase() === 'yes',
     to: String(getSettingValue_('NotificationEmailTo', '') || '').trim(),
     cc: String(getSettingValue_('NotificationEmailCc', '') || '').trim(),
     bcc: String(getSettingValue_('NotificationEmailBcc', '') || '').trim(),
@@ -1679,6 +1909,16 @@ function getEmailIntegrationConfig_() {
     alias: String(getSettingValue_('NotificationFromAlias', '') || '').trim(),
     senderName: String(getSettingValue_('NotificationSenderName', 'SPED Status Reports') || '').trim(),
   };
+}
+
+function getActiveServiceContacts_() {
+  if (REQUEST_CACHE.serviceContacts) {
+    return REQUEST_CACHE.serviceContacts;
+  }
+  const rows = getTableRows_(SHEETS.serviceContacts, SERVICE_CONTACT_HEADERS)
+    .filter((row) => String(row.Active || '').toLowerCase() === 'yes');
+  REQUEST_CACHE.serviceContacts = rows;
+  return rows;
 }
 
 function getNotificationCalendar_() {

@@ -434,6 +434,7 @@
         </div>
         <div class="row">
           <button class="secondary" onclick="runOpenAdminSheet('evaluators')">Open Evaluators</button>
+          <button class="secondary" onclick="runOpenAdminSheet('serviceContacts')">Open Service Contacts</button>
           <button class="secondary" onclick="runOpenAdminSheet('calendars')">Open Calendars</button>
         </div>
         <div class="row">
@@ -804,6 +805,11 @@
               .withSuccessHandler((result) => {
                 state.selectedCaseId = result.caseId;
                 renderTimeline(result.timeline || {});
+                const warnings = result.notifications || [];
+                if (warnings.length) {
+                  setStatus(`Saved ${result.caseId}. ${warnings.join(' ')}`, 'success');
+                  return;
+                }
                 setStatus(`Saved ${result.caseId}.`, 'success');
               })
               .withFailureHandler(handleError)
@@ -1047,6 +1053,7 @@
           districts: 'openDistrictsSheet',
           campuses: 'openCampusesSheet',
           evaluators: 'openEvaluatorsSheet',
+          serviceContacts: 'openServiceContactsSheet',
           calendars: 'openCalendarsSheet',
           settings: 'openSettingsSheet',
           audit: 'openAuditSheet',
