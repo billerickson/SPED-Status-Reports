@@ -1698,6 +1698,11 @@ function getSettingValue_(settingKey, fallbackValue) {
   return match.SettingValue;
 }
 
+function isEnabledSetting_(settingKey, fallbackValue) {
+  const normalized = String(getSettingValue_(settingKey, fallbackValue) || '').trim().toLowerCase();
+  return ['yes', 'true', '1', 'on'].includes(normalized);
+}
+
 function getNumericSetting_(settingKey, fallbackValue) {
   const value = Number(getSettingValue_(settingKey, fallbackValue));
   return Number.isFinite(value) ? value : fallbackValue;
@@ -1960,12 +1965,12 @@ function seedSettings_() {
 
 function getEmailIntegrationConfig_() {
   return {
-    autoSendNewReferralAssignments: String(getSettingValue_('AutoSendNewReferralAssignments', 'No') || '').toLowerCase() === 'yes',
+    autoSendNewReferralAssignments: isEnabledSetting_('AutoSendNewReferralAssignments', 'No'),
     newReferralAssignmentTo: String(getSettingValue_('NewReferralAssignmentTo', '') || '').trim(),
     newReferralAssignmentCc: String(getSettingValue_('NewReferralAssignmentCc', '') || '').trim(),
-    autoSendMilestoneUpdates: String(getSettingValue_('AutoSendMilestoneUpdates', 'No') || '').toLowerCase() === 'yes',
-    includeLeadEvaluatorOnNewAssignments: String(getSettingValue_('IncludeLeadEvaluatorOnNewAssignments', 'Yes') || '').toLowerCase() === 'yes',
-    includeLeadEvaluatorOnMilestoneUpdates: String(getSettingValue_('IncludeLeadEvaluatorOnMilestoneUpdates', 'Yes') || '').toLowerCase() === 'yes',
+    autoSendMilestoneUpdates: isEnabledSetting_('AutoSendMilestoneUpdates', 'No'),
+    includeLeadEvaluatorOnNewAssignments: isEnabledSetting_('IncludeLeadEvaluatorOnNewAssignments', 'Yes'),
+    includeLeadEvaluatorOnMilestoneUpdates: isEnabledSetting_('IncludeLeadEvaluatorOnMilestoneUpdates', 'Yes'),
     to: String(getSettingValue_('NotificationEmailTo', '') || '').trim(),
     cc: String(getSettingValue_('NotificationEmailCc', '') || '').trim(),
     bcc: String(getSettingValue_('NotificationEmailBcc', '') || '').trim(),
